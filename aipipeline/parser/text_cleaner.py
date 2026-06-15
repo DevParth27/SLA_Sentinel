@@ -96,3 +96,5 @@ if __name__ == "__main__":
     print("[CLEANED OUTPUT]")
     print(cleaned)
     print(f"\nOriginal: {len(sample)} chars → Cleaned: {len(cleaned)} chars")
+    
+#Removes page numbers, headers, broken line breaks, and weird characters from raw PDF text before it goes to the LLM.

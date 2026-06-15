@@ -83,3 +83,5 @@ if __name__ == "__main__":
     result = parse_pdf(sys.argv[1])
     print(f"\n[RESULT] Extracted {len(result)} characters\n")
     print(result[:500], "...")
+    
+#Opens a PDF (local or S3), extracts all text page by page, skips blank pages, raises clear  errors for scanned/image PDFs.
