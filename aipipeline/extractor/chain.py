@@ -31,10 +31,11 @@ def get_llm(temperature: float = 0.0) -> ChatOpenAI:
     Change model to "gpt-3.5-turbo" if you want faster/cheaper results for testing.
     """
     api_key = os.getenv("OPENAI_API_KEY")
+    print(f"[chain] API key loaded: {'YES' if api_key else 'NO — CHECK .env'}")
     if not api_key:
         raise EnvironmentError("OPENAI_API_KEY not set in .env")
     return ChatOpenAI(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         temperature=temperature,
         openai_api_key=api_key,
     )

@@ -8,7 +8,7 @@ multiple contracts. Each endpoint validates input and returns clean JSON.
 """
 
 import os
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import Optional
 import tempfile
@@ -27,7 +27,7 @@ router = APIRouter()
 class ProcessS3Request(BaseModel):
     s3_key: str
     bucket: str
-    contract_id: Optional[str] = None
+    contract_id: Optional[str] = Form(None)
 
 
 class QueryRequest(BaseModel):
@@ -151,8 +151,8 @@ def compare(body: CompareRequest):
     field_diff = diff_compare(body.contracts)
 
     # LLM-generated qualitative summary (slower, uses API)
-    clauses_list = [c.get("clauses", {}) for c in body.contracts]
-    llm_summary = llm_compare(clauses_list)
+   
+    llm_summary = llm_compare(body.contracts)
 
     return {
         "field_diff": field_diff,
