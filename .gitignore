@@ -23,3 +23,5 @@ venv/
 *.log
 
 .claude
+.vercel
+.env*

@@ -1,0 +1,375 @@
+SLA SENTINEL — BACKEND API REFERENCE
+=====================================
+Base URL (dev): http://localhost:8000
+All JSON endpoints use: Content-Type: application/json
+No auth headers required (hackathon mode — open API)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ HEALTH
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GET /health
+  Headers:  (none)
+  Response: 200
+  {
+    "status": "ok",
+    "service": "SLA Sentinel Backend",
+    "timestamp": "2025-01-31T10:00:00.000Z",
+    "version": "1.0.0"
+  }
+
+  curl http://localhost:8000/health
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CONTRACTS  —  /api/contracts
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GET /api/contracts
+  List all contracts ordered by expiry_date ASC.
+  Falls back to 3-contract seed data if DB is down.
+
+  Headers:  (none)
+  Response: 200 — array
+  [
+    {
+      "id": "uuid",
+      "name": "CloudSync SaaS Agreement",
+      "vendor": "CloudSync Technologies Pvt. Ltd.",
+      "client": "Meridian Retail Solutions Pvt. Ltd.",
+      "effective_date": "2024-02-01",
+      "expiry_date": "2025-01-31",
+      "auto_renewal": true,
+      "renewal_notice_days": 30,
+      "monthly_fee": "120000.00",
+      "currency": "INR",
+      "risk_score": 62,
+      "status": "expiring-soon",    // active | expiring-soon | high-risk | pending | processing
+      "s3_key": "contracts/...",
+      "original_filename": "CloudSync_SaaS_Agreement.pdf",
+      "flag_count": 2,
+      "created_at": "...",
+      "updated_at": "..."
+    }
+  ]
+
+  curl http://localhost:8000/api/contracts
+
+---
+
+GET /api/contracts/:id
+  Single contract with all clauses and flags.
+
+  Headers:  (none)
+  Response: 200
+  {
+    "id": "uuid",
+    ... (all contract fields),
+    "clauses": [
+      {
+        "id": "uuid",
+        "contract_id": "uuid",
+        "type": "Payment",          // Payment | SLA | Auto-renewal | Liability | Termination | Confidentiality
+        "summary": "30-day net payment terms",
+        "raw_text": "...",
+        "created_at": "..."
+      }
+    ],
+    "flags": [
+      {
+        "id": "uuid",
+        "contract_id": "uuid",
+        "message": "Contract renews in 30 days — notice required",
+        "severity": "high",         // high | medium | low
+        "created_at": "..."
+      }
+    ]
+  }
+
+  Response: 404  { "error": "Contract not found" }
+
+  curl http://localhost:8000/api/contracts/550e8400-e29b-41d4-a716-446655440000
+
+---
+
+POST /api/contracts/upload
+  Upload a PDF. Stores in S3, inserts DB record, notifies AI pipeline.
+  AI pipeline processes async — poll contract status or await webhook.
+
+  Headers:  Content-Type: multipart/form-data
+  Body:     form-data field "file" = <PDF binary>
+
+  Response: 201
+  {
+    "contract_id": "uuid",
+    "s3_key": "contracts/1706688000000-example.pdf",
+    "status": "processing",
+    "message": "Contract uploaded. AI analysis in progress."
+  }
+
+  Response: 400  { "error": "No file uploaded" }
+  Response: 400  { "error": "Only PDF files are accepted" }
+
+  curl -X POST http://localhost:8000/api/contracts/upload \
+    -F "file=@/path/to/contract.pdf"
+
+---
+
+GET /api/contracts/presigned/:key
+  Generate a temporary S3 presigned URL to download the original PDF.
+  URL expires after 3600 seconds.
+
+  Headers:  (none)
+  Params:   key — S3 object key (e.g. contracts/1706688000000-example.pdf)
+  Response: 200
+  {
+    "url": "https://sla-sentinel-contracts.s3.amazonaws.com/contracts/...?X-Amz-..."
+  }
+
+  curl "http://localhost:8000/api/contracts/presigned/contracts%2F1706688000000-example.pdf"
+
+---
+
+DELETE /api/contracts/:id
+  Delete contract. Cascades to clauses and flags.
+
+  Headers:  (none)
+  Response: 200  { "message": "deleted" }
+
+  curl -X DELETE http://localhost:8000/api/contracts/550e8400-e29b-41d4-a716-446655440000
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CLAUSES  —  /api/clauses
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GET /api/clauses/contract/:contractId
+  All clauses for a contract, ordered by type.
+
+  Headers:  (none)
+  Response: 200 — array
+  [
+    {
+      "id": "uuid",
+      "contract_id": "uuid",
+      "type": "SLA",
+      "summary": "99.5% uptime guaranteed monthly",
+      "raw_text": "Vendor shall maintain 99.5% uptime...",
+      "created_at": "..."
+    }
+  ]
+
+  curl http://localhost:8000/api/clauses/contract/550e8400-e29b-41d4-a716-446655440000
+
+---
+
+POST /api/clauses/contract/:contractId
+  Called by AI pipeline after clause extraction.
+  Replaces all existing clauses for this contract.
+
+  Headers:  Content-Type: application/json
+  Body:
+  {
+    "clauses": [
+      {
+        "type": "Payment",
+        "summary": "30-day net payment terms with 2% late fee",
+        "raw_text": "Payment shall be made within 30 days..."
+      },
+      {
+        "type": "SLA",
+        "summary": "99.5% monthly uptime SLA",
+        "raw_text": "Vendor guarantees 99.5% uptime..."
+      }
+    ]
+  }
+
+  Response: 200  { "inserted": 2 }
+  Response: 400  { "error": "clauses must be an array" }
+
+  curl -X POST http://localhost:8000/api/clauses/contract/550e8400-e29b-41d4-a716-446655440000 \
+    -H "Content-Type: application/json" \
+    -d '{"clauses":[{"type":"Payment","summary":"30-day net","raw_text":"..."}]}'
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ RISKS  —  /api/risks
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GET /api/risks/summary
+  Portfolio-level risk aggregation across all contracts.
+  Falls back to static values if DB is down.
+
+  Headers:  (none)
+  Response: 200
+  {
+    "total_contracts": 3,
+    "high_risk": 1,
+    "expiring_soon": 1,
+    "avg_risk_score": 62,
+    "total_monthly_exposure": "205000.00",
+    "expiring_next_30_days": 2
+  }
+
+  curl http://localhost:8000/api/risks/summary
+
+---
+
+GET /api/risks/contract/:contractId
+  Risk score and all flags for a single contract.
+
+  Headers:  (none)
+  Response: 200
+  {
+    "risk_score": 44,
+    "flags": [
+      {
+        "id": "uuid",
+        "contract_id": "uuid",
+        "message": "Short renewal notice — 15 days only",
+        "severity": "high",
+        "created_at": "..."
+      }
+    ]
+  }
+
+  Response: 404  { "error": "Contract not found" }
+
+  curl http://localhost:8000/api/risks/contract/550e8400-e29b-41d4-a716-446655440000
+
+---
+
+POST /api/risks/contract/:contractId/score
+  Called by AI pipeline after risk scoring.
+  Updates contract status based on score:
+    >= 80  →  status: "active"
+    >= 50  →  status: "expiring-soon"
+    < 50   →  status: "high-risk"
+  Replaces all existing flags.
+
+  Headers:  Content-Type: application/json
+  Body:
+  {
+    "risk_score": 44,
+    "flags": [
+      { "message": "Auto-renewal in 15 days — notice too short", "severity": "high" },
+      { "message": "Late payment penalty rate 24% p.a. — above market", "severity": "medium" },
+      { "message": "No liability cap defined", "severity": "high" }
+    ]
+  }
+
+  Response: 200 — updated contract object
+  {
+    "id": "uuid",
+    "risk_score": 44,
+    "status": "high-risk",
+    ... (all contract fields)
+  }
+
+  Response: 400  { "error": "risk_score must be a number" }
+  Response: 404  { "error": "Contract not found" }
+
+  curl -X POST http://localhost:8000/api/risks/contract/550e8400-e29b-41d4-a716-446655440000/score \
+    -H "Content-Type: application/json" \
+    -d '{"risk_score":44,"flags":[{"message":"Short notice period","severity":"high"}]}'
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ QUERY (AI)  —  /api/query
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+POST /api/query
+  Natural language question about contracts.
+  Forwards to AI pipeline (AI_PIPELINE_URL/query, 8s timeout).
+  On failure returns static fallback — never errors.
+  Saves all Q&A to queries table regardless of source.
+
+  Headers:  Content-Type: application/json
+  Body:
+  {
+    "question": "Which contracts renew in the next 90 days?"
+  }
+
+  Response: 200
+  {
+    "answer": "CloudSync SaaS Agreement renews on Jan 31 2025. 30-day notice required — deadline is Jan 1. Auto-renewal will trigger if not cancelled.",
+    "source": "pipeline"    // "pipeline" | "fallback"
+  }
+
+  Fallback answer (when pipeline is down):
+  {
+    "answer": "AI pipeline is currently processing. Based on your contracts: CloudSync renews Jan 31 (30-day notice required), Razorpay is high risk (score 44/100), total monthly exposure is ₹2,05,000.",
+    "source": "fallback"
+  }
+
+  Response: 400  { "error": "question is required" }
+
+  curl -X POST http://localhost:8000/api/query \
+    -H "Content-Type: application/json" \
+    -d '{"question":"Which contracts have auto-renewal?"}'
+
+---
+
+GET /api/query/history
+  Last 20 questions and answers, newest first.
+
+  Headers:  (none)
+  Response: 200 — array
+  [
+    {
+      "id": "uuid",
+      "question": "Which contracts have auto-renewal?",
+      "answer": "CloudSync and Razorpay both have auto-renewal clauses.",
+      "created_at": "..."
+    }
+  ]
+
+  curl http://localhost:8000/api/query/history
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ AI PIPELINE CALLBACKS (from FastAPI)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+After processing, the AI pipeline should call back in this order:
+
+  1. POST /api/clauses/contract/{contract_id}
+     Body: { "clauses": [...] }
+
+  2. POST /api/risks/contract/{contract_id}/score
+     Body: { "risk_score": <0-100>, "flags": [...] }
+
+Both calls are idempotent — safe to retry.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ STATUS VALUES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Contract status:
+  pending        — just inserted, not yet uploaded to S3
+  processing     — uploaded, AI pipeline notified, awaiting results
+  active         — risk_score >= 80
+  expiring-soon  — risk_score 50–79
+  high-risk      — risk_score < 50
+
+Severity levels:
+  high    — requires immediate action
+  medium  — should review
+  low     — informational
+
+Clause types:
+  Payment | SLA | Auto-renewal | Liability | Termination | Confidentiality | General
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ ERROR FORMAT (all routes)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  { "error": "<message>", "status": <http_code> }
+  { "error": "Validation failed", "details": [{ "path": "field", "message": "..." }] }
+
+  400 — bad request / validation
+  404 — not found
+  500 — server error (never exposes stack trace)
