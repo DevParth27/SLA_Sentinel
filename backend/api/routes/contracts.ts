@@ -88,6 +88,43 @@ router.get("/:id", async (req: Request, res: Response) => {
   }
 });
 
+// Pulls the structured fields the AI extracts as clauses (dates, fee, parties,
+// renewal terms) up into the contract row's own columns, so the dashboard
+// reminders / renewal timeline / fee totals — which read those columns — light
+// up. Returns only the columns it could confidently derive.
+function metadataFromClauses(clauses: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+
+  const isDate = (v: any) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v.trim());
+  if (isDate(clauses.effective_date)) out.effective_date = clauses.effective_date.trim();
+  if (isDate(clauses.expiry_date)) out.expiry_date = clauses.expiry_date.trim();
+
+  const notice = Number(clauses.notice_period_days);
+  if (Number.isFinite(notice) && notice > 0) out.renewal_notice_days = Math.round(notice);
+
+  // payment_terms is { amount, currency, frequency, ... }
+  const pay = clauses.payment_terms;
+  if (pay && typeof pay === "object") {
+    const amount = Number(pay.amount);
+    if (Number.isFinite(amount) && amount > 0) out.monthly_fee = amount;
+    if (typeof pay.currency === "string" && pay.currency.trim()) out.currency = pay.currency.trim();
+  }
+
+  // parties is { party_a (client), party_b (vendor/service provider) }
+  const parties = clauses.parties;
+  if (parties && typeof parties === "object") {
+    if (typeof parties.party_b === "string" && parties.party_b.trim()) out.vendor = parties.party_b.trim();
+    if (typeof parties.party_a === "string" && parties.party_a.trim()) out.client = parties.party_a.trim();
+  }
+
+  // Auto-renewal is expressed in the renewal_terms prose.
+  if (typeof clauses.renewal_terms === "string" && /automatic|auto-?renew|renew/i.test(clauses.renewal_terms)) {
+    out.auto_renewal = true;
+  }
+
+  return out;
+}
+
 // Runs the AI pipeline for an uploaded contract and persists clauses + risk
 // score/flags to the DB. Designed to be fired in the background after the
 // upload response is sent (see runInBackground).
@@ -130,6 +167,21 @@ async function processContract(contractId: string, s3Key: string): Promise<void>
           vals
         );
         console.log(`[DB] Saved ${clauseRows.length} clauses for contract ${contractId}`);
+      }
+
+      // Promote structured fields (dates, fee, vendor, renewal) into the
+      // contract's own columns so the dashboard reminders/timeline populate.
+      const meta = metadataFromClauses(aiData.clauses);
+      const cols = Object.keys(meta);
+      if (cols.length > 0) {
+        const setClause = cols.map((c, i) => `${c} = $${i + 1}`).join(", ");
+        const vals = cols.map((c) => meta[c]);
+        vals.push(contractId);
+        await query(
+          `UPDATE contracts SET ${setClause}, updated_at = NOW() WHERE id = $${cols.length + 1}`,
+          vals
+        );
+        console.log(`[DB] Updated contract ${contractId} metadata: ${cols.join(", ")}`);
       }
     }
 
