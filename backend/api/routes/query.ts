@@ -32,7 +32,9 @@ router.post("/", async (req: Request, res: Response) => {
     // Try AI pipeline
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      // GPT completions routinely take 10-25s (longer on a cold pipeline), so
+      // give the AI pipeline room before falling back to the canned answer.
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const pipelineRes = await fetch(`${AI_URL}/api/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

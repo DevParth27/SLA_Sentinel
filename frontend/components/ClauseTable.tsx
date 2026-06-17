@@ -15,6 +15,73 @@ const TYPE_DOT: Record<string, string> = {
   Confidentiality: "bg-emerald-400",
 };
 
+// The AI pipeline stores some clause values as JSON (arrays of strings, arrays
+// of {description, amount_or_rate} objects, or key/value objects). Turn snake_case
+// field keys into readable labels.
+function prettifyKey(key: string): string {
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// If a stored summary is a JSON array/object, parse it; otherwise return as-is.
+function tryParse(value: string): any {
+  if (typeof value !== "string") return value;
+  const t = value.trim();
+  if (!t.startsWith("[") && !t.startsWith("{")) return value;
+  try {
+    return JSON.parse(t);
+  } catch {
+    return value;
+  }
+}
+
+// Renders a clause value: plain text stays text; arrays become bullet lists;
+// objects (and objects inside arrays) become readable "Label: value" lines.
+function FormattedValue({ value }: { value: string }) {
+  const parsed = tryParse(value);
+
+  if (parsed === null || typeof parsed !== "object") {
+    return <span>{String(parsed ?? value)}</span>;
+  }
+
+  if (Array.isArray(parsed)) {
+    return (
+      <ul className="list-disc pl-4 space-y-1.5">
+        {parsed.map((item, i) => (
+          <li key={i}>
+            {item && typeof item === "object" ? (
+              <span className="space-x-1">
+                {Object.entries(item).map(([k, v]) => (
+                  <span key={k}>
+                    <span className="font-medium text-slate-700">
+                      {prettifyKey(k)}:
+                    </span>{" "}
+                    {String(v)}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              String(item)
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {Object.entries(parsed).map(([k, v]) => (
+        <div key={k}>
+          <span className="font-medium text-slate-700">{prettifyKey(k)}:</span>{" "}
+          {String(v)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ClauseTable({ clauses, compareWith }: ClauseTableProps) {
   return (
     <div className="rounded-xl overflow-hidden border border-slate-100">
@@ -62,19 +129,19 @@ export default function ClauseTable({ clauses, compareWith }: ClauseTableProps) 
                       }`}
                     />
                     <span className="font-semibold text-slate-800 text-xs">
-                      {clause.type}
+                      {prettifyKey(clause.type)}
                     </span>
                   </div>
                 </td>
                 <td className="px-4 py-3.5 text-slate-500 text-xs leading-relaxed">
-                  {clause.summary}
+                  <FormattedValue value={clause.summary} />
                 </td>
                 {compareWith && (
                   <td className="px-4 py-3.5 text-xs">
                     {other ? (
                       isDiff ? (
                         <span className="text-amber-700 font-medium">
-                          {other.summary}
+                          <FormattedValue value={other.summary} />
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-emerald-600 text-[10px] font-semibold uppercase tracking-wide">
