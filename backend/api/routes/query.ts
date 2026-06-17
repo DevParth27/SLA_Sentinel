@@ -20,14 +20,23 @@ router.post("/", async (req: Request, res: Response) => {
     let answer = FALLBACK_ANSWER;
     let source = "fallback";
 
+    // Fetch contracts from DB to give the AI pipeline context
+    let contracts_data: any[] = [];
+    try {
+      const contractsResult = await query("SELECT * FROM contracts LIMIT 20");
+      contracts_data = contractsResult.rows;
+    } catch (dbErr: any) {
+      console.warn("[query] Could not fetch contracts for AI context:", dbErr.message);
+    }
+
     // Try AI pipeline
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 8000);
-      const pipelineRes = await fetch(`${AI_URL}/query`, {
+      const pipelineRes = await fetch(`${AI_URL}/api/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, contracts_data }),
         signal: controller.signal,
       });
       clearTimeout(timeout);

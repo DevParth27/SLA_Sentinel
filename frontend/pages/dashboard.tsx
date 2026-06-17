@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import { CONTRACTS, getHighRiskContracts, Contract } from "../lib/api";
-import { CURRENT_USER } from "../lib/auth";
+import {
+  fetchContracts,
+  fetchRiskSummary,
+  isHighRisk,
+  Contract,
+  RiskSummary,
+} from "../lib/api";
 import ContractCard from "../components/ContractCard";
 import RiskBadge from "../components/RiskBadge";
 import QueryBar from "../components/QueryBar";
@@ -55,6 +60,12 @@ function daysFromNow(dateStr: string): number {
   return Math.round((new Date(dateStr).getTime() - Date.now()) / 86400000);
 }
 
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
 function SkeletonBlock({ className }: { className: string }) {
   return <div className={`rounded shimmer ${className}`} />;
 }
@@ -95,8 +106,9 @@ function SkeletonCard() {
 
 function RenewalRow({ contract }: { contract: Contract }) {
   const days = daysFromNow(contract.expiryDate);
-  const isOverdue = days < 0;
-  const isUrgent = days >= 0 && days <= 30;
+  const valid = !Number.isNaN(days);
+  const isOverdue = valid && days < 0;
+  const isUrgent = valid && days >= 0 && days <= 30;
 
   return (
     <div
@@ -107,15 +119,13 @@ function RenewalRow({ contract }: { contract: Contract }) {
         <p className="text-[13px] font-semibold text-slate-800 truncate group-hover:text-violet-700 transition-colors">
           {contract.name}
         </p>
-        <p className="text-[11px] text-slate-400 truncate">{contract.vendor}</p>
+        <p className="text-[11px] text-slate-400 truncate">{contract.vendor || "—"}</p>
       </div>
       <div className="text-right flex-shrink-0">
         <p className={`text-[12px] font-bold tabular-nums ${isOverdue ? "text-red-600" : isUrgent ? "text-amber-600" : "text-slate-600"}`}>
-          {isOverdue ? `${Math.abs(days)}d overdue` : `${days}d left`}
+          {!valid ? "—" : isOverdue ? `${Math.abs(days)}d overdue` : `${days}d left`}
         </p>
-        <p className="text-[10px] text-slate-300 mt-0.5">
-          {new Date(contract.expiryDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-        </p>
+        <p className="text-[10px] text-slate-300 mt-0.5">{formatDate(contract.expiryDate)}</p>
       </div>
     </div>
   );
@@ -123,26 +133,60 @@ function RenewalRow({ contract }: { contract: Contract }) {
 
 export default function Dashboard() {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [summary, setSummary] = useState<RiskSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const t = setTimeout(() => setReady(true), 750);
-    return () => clearTimeout(t);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [contractList, riskSummary] = await Promise.all([
+        fetchContracts(),
+        fetchRiskSummary().catch(() => null),
+      ]);
+      setContracts(contractList);
+      setSummary(riskSummary);
+    } catch (err: any) {
+      setError(err?.message || "Could not load contracts. Is the backend running?");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const totalMonthly = CONTRACTS.reduce((s, c) => s + c.monthlyFee, 0);
-  const avgRisk = Math.round(CONTRACTS.reduce((s, c) => s + c.riskScore, 0) / CONTRACTS.length);
-  const highRiskList = getHighRiskContracts();
-  const activeCount = CONTRACTS.filter((c) => c.status === "active").length;
-  const totalClauses = CONTRACTS.reduce((s, c) => s + c.clauses.length, 0);
-  const sortedByExpiry = [...CONTRACTS].sort(
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const ready = !loading && !error;
+  const isEmpty = ready && contracts.length === 0;
+
+  // Prefer backend-computed summary; fall back to deriving from the contract list.
+  const totalMonthly =
+    summary?.totalMonthlyExposure ?? contracts.reduce((s, c) => s + c.monthlyFee, 0);
+  const avgRisk =
+    summary?.avgRiskScore ??
+    (contracts.length
+      ? Math.round(contracts.reduce((s, c) => s + c.riskScore, 0) / contracts.length)
+      : 0);
+  const highRiskList = contracts.filter(isHighRisk);
+  const activeCount = contracts.filter((c) => c.status === "active").length;
+  const expiring30 =
+    summary?.expiringNext30Days ??
+    contracts.filter((c) => {
+      const d = daysFromNow(c.expiryDate);
+      return !Number.isNaN(d) && d >= 0 && d <= 30;
+    }).length;
+  const totalContracts = summary?.totalContracts ?? contracts.length;
+  const sortedByExpiry = [...contracts].sort(
     (a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()
   );
 
   const STATS = [
     {
       label: "Total Contracts",
-      display: String(CONTRACTS.length),
+      display: String(totalContracts),
       sub: "under management",
       color: "text-slate-900",
       icon: (
@@ -175,9 +219,9 @@ export default function Dashboard() {
     },
     {
       label: "High Risk",
-      display: String(highRiskList.length),
+      display: String(summary?.highRisk ?? highRiskList.length),
       sub: "contracts flagged",
-      color: highRiskList.length > 0 ? "text-red-600" : "text-slate-400",
+      color: (summary?.highRisk ?? highRiskList.length) > 0 ? "text-red-600" : "text-slate-400",
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
@@ -196,13 +240,13 @@ export default function Dashboard() {
       ),
     },
     {
-      label: "Clauses Extracted",
-      display: String(totalClauses),
-      sub: "across all contracts",
-      color: "text-slate-900",
+      label: "Expiring (30d)",
+      display: String(expiring30),
+      sub: "renewal deadline near",
+      color: expiring30 > 0 ? "text-amber-600" : "text-slate-400",
       icon: (
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
     },
@@ -257,29 +301,23 @@ export default function Dashboard() {
           </nav>
 
           {/* Sidebar insight */}
-          <div className="mx-3 mb-3 p-3 rounded-xl bg-violet-50 border border-violet-100">
-            <p className="text-[10.5px] font-semibold text-violet-700 mb-1">Portfolio Alert</p>
-            <p className="text-[11px] text-violet-600 leading-relaxed">
-              {highRiskList.length} high-risk contract{highRiskList.length !== 1 ? "s" : ""} need immediate review.
-            </p>
-            <button
-              onClick={() => router.push(`/contract?id=${highRiskList[0]?.id}`)}
-              className="text-[10.5px] font-semibold text-violet-700 mt-1.5 hover:underline"
-            >
-              Review now →
-            </button>
-          </div>
+          {highRiskList.length > 0 && (
+            <div className="mx-3 mb-3 p-3 rounded-xl bg-violet-50 border border-violet-100">
+              <p className="text-[10.5px] font-semibold text-violet-700 mb-1">Portfolio Alert</p>
+              <p className="text-[11px] text-violet-600 leading-relaxed">
+                {highRiskList.length} high-risk contract{highRiskList.length !== 1 ? "s" : ""} need immediate review.
+              </p>
+              <button
+                onClick={() => router.push(`/contract?id=${highRiskList[0]?.id}`)}
+                className="text-[10.5px] font-semibold text-violet-700 mt-1.5 hover:underline"
+              >
+                Review now →
+              </button>
+            </div>
+          )}
 
           <div className="px-4 py-4 border-t border-slate-100">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0 shadow-sm">
-                {CURRENT_USER.name.charAt(0)}
-              </div>
-              <div className="min-w-0">
-                <p className="text-[12.5px] font-semibold text-slate-800 truncate">{CURRENT_USER.name}</p>
-                <p className="text-[11px] text-slate-400 truncate">{CURRENT_USER.role}</p>
-              </div>
-            </div>
+            <p className="text-[11px] text-slate-400">ContractIQ · v1.0</p>
           </div>
         </aside>
 
@@ -315,15 +353,15 @@ export default function Dashboard() {
           {/* Topbar */}
           <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
             <div>
-              <h1 className="text-[13.5px] font-semibold text-slate-800">
-                Good morning, {CURRENT_USER.name.split(" ")[0]}
-              </h1>
-              <p className="text-[11.5px] text-slate-400 mt-0.5">{CURRENT_USER.company} · {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
+              <h1 className="text-[13.5px] font-semibold text-slate-800">Contract Dashboard</h1>
+              <p className="text-[11.5px] text-slate-400 mt-0.5">
+                {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
+              </p>
             </div>
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex items-center gap-2 text-[12px] text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                All systems operational
+                <span className={`w-1.5 h-1.5 rounded-full ${error ? "bg-red-400" : "bg-emerald-400"}`} />
+                {error ? "Backend unreachable" : "All systems operational"}
               </div>
               <button
                 onClick={() => router.push("/upload")}
@@ -339,41 +377,83 @@ export default function Dashboard() {
           </header>
 
           <div className="flex-1 p-6 max-w-7xl w-full space-y-6">
+            {/* ── ERROR STATE ── */}
+            {error && (
+              <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-10 text-center">
+                <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                  </svg>
+                </div>
+                <p className="text-[15px] font-bold text-slate-900 mb-1">Couldn’t load your contracts</p>
+                <p className="text-[12.5px] text-slate-400 mb-6">{error}</p>
+                <button
+                  onClick={load}
+                  className="text-[13px] font-semibold text-white px-5 py-2.5 rounded-xl transition-all"
+                  style={{ background: "linear-gradient(135deg, #7C3AED, #6d28d9)" }}
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
             {/* ── STATS ── */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <AnimatePresence mode="wait">
-                {!ready
-                  ? Array.from({ length: 6 }).map((_, i) => (
-                      <motion.div key={`sk-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.04 }}>
-                        <SkeletonStat />
-                      </motion.div>
-                    ))
-                  : STATS.map((s, i) => (
-                      <motion.div
-                        key={s.label}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.05, duration: 0.35 }}
-                        className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-4"
-                      >
-                        <div className={`w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 mb-3`}>
-                          {s.icon}
-                        </div>
-                        <p className={`text-[22px] font-bold tabular-nums leading-none mb-1 ${s.color}`}>
-                          {s.display}
-                        </p>
-                        <p className="text-[10px] text-slate-400 leading-tight">{s.sub}</p>
-                      </motion.div>
-                    ))}
-              </AnimatePresence>
-            </div>
+            {!error && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <AnimatePresence mode="wait">
+                  {loading
+                    ? Array.from({ length: 6 }).map((_, i) => (
+                        <motion.div key={`sk-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.04 }}>
+                          <SkeletonStat />
+                        </motion.div>
+                      ))
+                    : STATS.map((s, i) => (
+                        <motion.div
+                          key={s.label}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.35 }}
+                          className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-4"
+                        >
+                          <div className={`w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 mb-3`}>
+                            {s.icon}
+                          </div>
+                          <p className={`text-[22px] font-bold tabular-nums leading-none mb-1 ${s.color}`}>
+                            {s.display}
+                          </p>
+                          <p className="text-[10px] text-slate-400 leading-tight">{s.sub}</p>
+                        </motion.div>
+                      ))}
+                </AnimatePresence>
+              </div>
+            )}
+
+            {/* ── EMPTY STATE ── */}
+            {isEmpty && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center">
+                <div className="w-16 h-16 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                  <svg className="w-7 h-7 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 13.5l3 3m0 0l3-3m-3 3v-6m1.06-4.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-bold text-slate-900 mb-1.5">No contracts yet</p>
+                <p className="text-sm text-slate-400 mb-6">Upload your first contract to start tracking risk and renewals.</p>
+                <button
+                  onClick={() => router.push("/upload")}
+                  className="text-[13px] font-semibold text-white px-5 py-2.5 rounded-xl transition-all"
+                  style={{ background: "linear-gradient(135deg, #7C3AED, #6d28d9)" }}
+                >
+                  Upload a contract
+                </button>
+              </div>
+            )}
 
             {/* ── MIDDLE ROW: Portfolio Health + Renewal Timeline ── */}
-            {ready && (
+            {ready && contracts.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
+                transition={{ delay: 0.1 }}
                 className="grid grid-cols-1 lg:grid-cols-5 gap-5"
               >
                 {/* Portfolio Health - 3 cols */}
@@ -393,7 +473,7 @@ export default function Dashboard() {
                   </div>
 
                   <div className="space-y-5">
-                    {CONTRACTS.map((c, i) => {
+                    {contracts.map((c, i) => {
                       const barColor = c.riskScore >= 80 ? "bg-emerald-500" : c.riskScore >= 50 ? "bg-amber-400" : "bg-red-500";
                       const trackColor = c.riskScore >= 80 ? "bg-emerald-50" : c.riskScore >= 50 ? "bg-amber-50" : "bg-red-50";
                       return (
@@ -413,12 +493,9 @@ export default function Dashboard() {
                               className={`h-full rounded-full ${barColor}`}
                               initial={{ width: 0 }}
                               animate={{ width: `${c.riskScore}%` }}
-                              transition={{ delay: i * 0.12 + 0.5, duration: 1, ease: "easeOut" }}
+                              transition={{ delay: i * 0.12 + 0.2, duration: 1, ease: "easeOut" }}
                             />
                           </div>
-                          {c.flags[0] && (
-                            <p className="text-[11px] text-slate-400 mt-1.5 truncate">{c.flags[0]}</p>
-                          )}
                         </div>
                       );
                     })}
@@ -430,9 +507,9 @@ export default function Dashboard() {
                       Monthly Exposure Breakdown
                     </p>
                     <div className="space-y-2">
-                      {CONTRACTS.filter((c) => c.monthlyFee > 0).map((c) => (
+                      {contracts.filter((c) => c.monthlyFee > 0).map((c) => (
                         <div key={c.id} className="flex items-center justify-between">
-                          <p className="text-[12px] text-slate-600 truncate flex-1">{c.vendor}</p>
+                          <p className="text-[12px] text-slate-600 truncate flex-1">{c.vendor || c.name}</p>
                           <p className="text-[12px] font-semibold text-slate-800 tabular-nums">
                             ₹{c.monthlyFee.toLocaleString("en-IN")}/mo
                           </p>
@@ -468,9 +545,9 @@ export default function Dashboard() {
                   {/* Summary */}
                   <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 text-center">
                     {[
-                      { label: "Overdue", value: CONTRACTS.filter(c => daysFromNow(c.expiryDate) < 0).length, color: "text-red-600" },
-                      { label: "Due soon", value: CONTRACTS.filter(c => { const d = daysFromNow(c.expiryDate); return d >= 0 && d <= 90; }).length, color: "text-amber-600" },
-                      { label: "Safe", value: CONTRACTS.filter(c => daysFromNow(c.expiryDate) > 90).length, color: "text-emerald-600" },
+                      { label: "Overdue", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d < 0; }).length, color: "text-red-600" },
+                      { label: "Due soon", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d >= 0 && d <= 90; }).length, color: "text-amber-600" },
+                      { label: "Safe", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d > 90; }).length, color: "text-emerald-600" },
                     ].map((s) => (
                       <div key={s.label}>
                         <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
@@ -483,7 +560,7 @@ export default function Dashboard() {
                   <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl p-3">
                     <p className="text-[11.5px] font-semibold text-amber-800 mb-1">Auto-renewal watch</p>
                     <p className="text-[11px] text-amber-700 leading-relaxed">
-                      {CONTRACTS.filter(c => c.autoRenewal).length} of {CONTRACTS.length} contracts have auto-renewal clauses.
+                      {contracts.filter(c => c.autoRenewal).length} of {contracts.length} contracts have auto-renewal clauses.
                       Review notice deadlines to avoid unwanted renewals.
                     </p>
                   </div>
@@ -492,71 +569,75 @@ export default function Dashboard() {
             )}
 
             {/* ── QUERY ── */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-5 h-5 rounded-md bg-violet-600 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
-                  </svg>
+            {!error && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6"
+              >
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-5 h-5 rounded-md bg-violet-600 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
+                    Ask your contracts
+                  </p>
+                  <span className="ml-auto text-[11px] text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">
+                    AI · GPT
+                  </span>
                 </div>
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
-                  Ask your contracts
-                </p>
-                <span className="ml-auto text-[11px] text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">
-                  AI · Claude
-                </span>
-              </div>
-              <QueryBar />
-            </motion.div>
+                <QueryBar />
+              </motion.div>
+            )}
 
             {/* ── CONTRACT GRID ── */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-[13.5px] font-semibold text-slate-800">All Contracts</h2>
-                <div className="flex items-center gap-3">
-                  <span className="text-[11.5px] text-slate-400">{CONTRACTS.length} contracts</span>
-                  <button
-                    onClick={() => router.push("/upload")}
-                    className="text-[11.5px] font-semibold text-violet-600 hover:text-violet-700 transition-colors"
-                  >
-                    + Add new
-                  </button>
+            {!error && !isEmpty && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-[13.5px] font-semibold text-slate-800">All Contracts</h2>
+                  <div className="flex items-center gap-3">
+                    {!loading && <span className="text-[11.5px] text-slate-400">{contracts.length} contracts</span>}
+                    <button
+                      onClick={() => router.push("/upload")}
+                      className="text-[11.5px] font-semibold text-violet-600 hover:text-violet-700 transition-colors"
+                    >
+                      + Add new
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  <AnimatePresence mode="wait">
+                    {loading
+                      ? Array.from({ length: 3 }).map((_, i) => (
+                          <motion.div key={`sc-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.08 }}>
+                            <SkeletonCard />
+                          </motion.div>
+                        ))
+                      : contracts.map((c, i) => (
+                          <motion.div
+                            key={c.id}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.08 + 0.1, duration: 0.38 }}
+                          >
+                            <ContractCard
+                              contract={c}
+                              onClick={() => router.push(`/contract?id=${c.id}`)}
+                            />
+                          </motion.div>
+                        ))}
+                  </AnimatePresence>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <AnimatePresence mode="wait">
-                  {!ready
-                    ? Array.from({ length: 3 }).map((_, i) => (
-                        <motion.div key={`sc-${i}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.08 }}>
-                          <SkeletonCard />
-                        </motion.div>
-                      ))
-                    : CONTRACTS.map((c, i) => (
-                        <motion.div
-                          key={c.id}
-                          initial={{ opacity: 0, y: 12 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.08 + 0.1, duration: 0.38 }}
-                        >
-                          <ContractCard
-                            contract={c}
-                            onClick={() => router.push(`/contract?id=${c.id}`)}
-                          />
-                        </motion.div>
-                      ))}
-                </AnimatePresence>
-              </div>
-            </div>
+            )}
 
             {/* ── FOOTER ── */}
             <div className="border-t border-slate-100 pt-5 pb-2 flex items-center justify-between text-[11.5px] text-slate-300">
-              <span>ContractIQ · {CURRENT_USER.company}</span>
+              <span>ContractIQ</span>
               <span>Last updated {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
           </div>

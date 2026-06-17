@@ -103,7 +103,7 @@ export default function ContractCard({ contract, onClick }: ContractCardProps) {
             {PILL_LABEL[contract.status]}
           </span>
           <span className="text-[11px] text-slate-300">
-            {contract.clauses.length} clauses
+            {contract.flagCount} flag{contract.flagCount !== 1 ? "s" : ""}
           </span>
         </div>
       </div>

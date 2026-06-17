@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { QUERY_ANSWERS } from "../lib/api";
+import { askQuery } from "../lib/api";
 
-const CHIPS = Object.keys(QUERY_ANSWERS);
+const CHIPS = [
+  "What renews next quarter?",
+  "Which contracts have low liability caps?",
+  "Show high risk contracts",
+  "What are my payment obligations this month?",
+];
 
 export default function QueryBar() {
   const [query, setQuery] = useState("");
@@ -12,23 +17,28 @@ export default function QueryBar() {
   const [loading, setLoading] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const requestId = useRef(0);
 
-  const search = (q: string) => {
+  const search = async (q: string) => {
     const trimmed = q.trim();
     if (!trimmed) return;
     if (timer.current) clearInterval(timer.current);
+    const reqId = ++requestId.current;
     setLoading(true);
     setAnswer("");
     setDisplay("");
     setTyping(false);
 
-    setTimeout(() => {
-      setLoading(false);
-      setAnswer(
-        QUERY_ANSWERS[trimmed] ??
-          "No specific data found for this query. Try one of the suggested queries below."
-      );
-    }, 550);
+    try {
+      const result = await askQuery(trimmed);
+      if (reqId !== requestId.current) return; // a newer query superseded this one
+      setAnswer(result || "No answer was returned for this query.");
+    } catch {
+      if (reqId !== requestId.current) return;
+      setAnswer("Couldn’t reach the AI service. Make sure the backend is running and try again.");
+    } finally {
+      if (reqId === requestId.current) setLoading(false);
+    }
   };
 
   useEffect(() => {

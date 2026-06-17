@@ -14,6 +14,22 @@ const s3 = new S3Client({
 const BUCKET = process.env.S3_BUCKET_NAME || "sla-sentinel-contracts";
 const AI_URL = process.env.AI_PIPELINE_URL || "http://localhost:8000";
 
+// Keep async work alive after the response is sent. On Vercel, a serverless
+// function is frozen once it responds, so background promises would be killed;
+// waitUntil() extends the function's lifetime until the work settles (bounded
+// by maxDuration in vercel.json). On a normal long-lived server there is no
+// Vercel context — the catch path runs the promise to completion as usual.
+function runInBackground(work: Promise<unknown>): void {
+  work.catch((e: any) => console.warn("[bg] task failed:", e?.message));
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { waitUntil } = require("@vercel/functions");
+    waitUntil(work);
+  } catch {
+    /* not on Vercel — the persistent server will finish the work */
+  }
+}
+
 // Fallback seed data if DB is down
 const SEED_CONTRACTS = [
   {
@@ -124,7 +140,150 @@ router.get("/:id", async (req: Request, res: Response) => {
   }
 });
 
+// Runs the AI pipeline for an uploaded contract and persists clauses + risk
+// score/flags to the DB. Designed to be fired in the background after the
+// upload response is sent (see runInBackground).
+async function processContract(contractId: string, s3Key: string): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 55000);
+  try {
+    const pipelineRes = await fetch(`${AI_URL}/api/process/s3`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ s3_key: s3Key, bucket: BUCKET, contract_id: contractId }),
+      signal: controller.signal,
+    });
+
+    if (!pipelineRes.ok) {
+      console.warn(`[AI] Pipeline returned ${pipelineRes.status} for contract ${contractId}`);
+      return;
+    }
+
+    const aiData: any = await pipelineRes.json();
+    console.log(`[AI] Pipeline finished contract ${contractId}: status=${aiData.status}`);
+    if (aiData.status !== "success") return;
+
+    // Save extracted clauses — flatten the clause dict into rows
+    if (aiData.clauses && typeof aiData.clauses === "object") {
+      const clauseRows = Object.entries(aiData.clauses).map(([type, value]) => ({
+        type,
+        summary: typeof value === "object" ? JSON.stringify(value) : String(value ?? ""),
+        raw_text: "",
+      }));
+      if (clauseRows.length > 0) {
+        const vals: any[] = [];
+        const placeholders = clauseRows.map((c, i) => {
+          const b = i * 4;
+          vals.push(contractId, c.type, c.summary, c.raw_text);
+          return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4})`;
+        });
+        await query(
+          `INSERT INTO clauses (contract_id, type, summary, raw_text) VALUES ${placeholders.join(", ")}`,
+          vals
+        );
+        console.log(`[DB] Saved ${clauseRows.length} clauses for contract ${contractId}`);
+      }
+    }
+
+    // Save risk score and flags — map AI field names to DB schema
+    if (aiData.risk_score) {
+      const score: number = aiData.risk_score.score ?? 0;
+      const rawFlags: any[] = aiData.risk_score.flags ?? [];
+      const status = score >= 80 ? "active" : score >= 50 ? "expiring-soon" : "high-risk";
+
+      await query(
+        `UPDATE contracts SET risk_score = $1, status = $2, updated_at = NOW() WHERE id = $3`,
+        [score, status, contractId]
+      );
+
+      if (rawFlags.length > 0) {
+        const vals: any[] = [];
+        const placeholders = rawFlags.map((f: any, i: number) => {
+          const b = i * 3;
+          // AI pipeline uses "description"; DB schema uses "message"
+          vals.push(contractId, f.description || f.message || "", (f.severity || "medium").toLowerCase());
+          return `($${b + 1}, $${b + 2}, $${b + 3})`;
+        });
+        await query(
+          `INSERT INTO flags (contract_id, message, severity) VALUES ${placeholders.join(", ")}`,
+          vals
+        );
+      }
+      console.log(`[DB] Saved risk score ${score} and ${rawFlags.length} flags for contract ${contractId}`);
+    }
+  } catch (bgErr: any) {
+    console.warn("[AI] Background processing failed:", bgErr.message);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// POST /api/contracts/upload-url
+// Issues a presigned PUT URL so the browser uploads the PDF straight to S3.
+// This is the preferred path — the file never passes through the serverless
+// function, so it is not subject to the platform request-body size limit.
+router.post("/upload-url", async (req: Request, res: Response) => {
+  try {
+    const { filename } = req.body || {};
+    if (!filename || typeof filename !== "string" || !filename.toLowerCase().endsWith(".pdf")) {
+      return res.status(400).json({ error: "A .pdf filename is required" });
+    }
+    const safeName = filename.replace(/[^\w.\-]+/g, "_");
+    const s3Key = `contracts/${Date.now()}-${safeName}`;
+    const cmd = new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: s3Key,
+      ContentType: "application/pdf",
+    });
+    const uploadUrl = await getSignedUrl(s3, cmd, { expiresIn: 300 });
+    res.json({ uploadUrl, s3Key });
+  } catch (err: any) {
+    res.status(500).json({ error: "Could not create upload URL", detail: err.message });
+  }
+});
+
+// POST /api/contracts/register
+// Called after the browser has PUT the file to S3 via the presigned URL.
+// Creates the contract row and kicks off AI processing in the background.
+router.post("/register", async (req: Request, res: Response) => {
+  try {
+    const { s3Key, filename } = req.body || {};
+    if (!s3Key || typeof s3Key !== "string") {
+      return res.status(400).json({ error: "s3Key is required" });
+    }
+    const contractName = String(filename || s3Key).replace(/\.pdf$/i, "");
+
+    let contractId: string;
+    try {
+      const insertResult = await query(
+        `INSERT INTO contracts (name, s3_key, original_filename, status)
+         VALUES ($1, $2, $3, 'processing') RETURNING id`,
+        [contractName, s3Key, filename || null]
+      );
+      contractId = insertResult.rows[0].id;
+      console.log(`[DB] Contract inserted: ${contractId}`);
+    } catch (dbErr: any) {
+      console.warn("[DB] Insert failed:", dbErr.message);
+      contractId = `temp-${Date.now()}`;
+    }
+
+    res.status(201).json({
+      contract_id: contractId,
+      s3_key: s3Key,
+      status: "processing",
+      message: "Contract uploaded. AI analysis in progress.",
+    });
+
+    runInBackground(processContract(contractId, s3Key));
+  } catch (err: any) {
+    res.status(500).json({ error: "Register failed", detail: err.message });
+  }
+});
+
 // POST /api/contracts/upload
+// Legacy multipart upload — the file passes through the function and is subject
+// to the platform request-body size limit (~4.5 MB on Vercel). Kept for
+// compatibility; browsers should prefer the presigned flow above.
 router.post("/upload", upload.single("file"), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
@@ -169,28 +328,15 @@ router.post("/upload", upload.single("file"), async (req: Request, res: Response
       contractId = `temp-${Date.now()}`;
     }
 
-    // Notify AI pipeline (non-blocking)
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      await fetch(`${AI_URL}/extract`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ s3_key: s3Key, contract_id: contractId }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      console.log(`[AI] Pipeline notified for contract ${contractId}`);
-    } catch (pipelineErr: any) {
-      console.warn("[AI] Pipeline unreachable:", pipelineErr.message);
-    }
-
+    // Respond immediately — AI processing runs in background
     res.status(201).json({
       contract_id: contractId,
       s3_key: s3Key,
       status: "processing",
       message: "Contract uploaded. AI analysis in progress.",
     });
+
+    if (s3Success) runInBackground(processContract(contractId, s3Key));
   } catch (err: any) {
     res.status(500).json({ error: "Upload failed", detail: err.message });
   }

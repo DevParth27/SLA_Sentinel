@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import { CONTRACTS } from "../lib/api";
 
 function useCounter(target: number, duration = 1000) {
   const [val, setVal] = useState(0);
@@ -201,10 +200,10 @@ function ProductPreview() {
 
 export default function Index() {
   const router = useRouter();
-  const totalMonthly = CONTRACTS.reduce((s, c) => s + c.monthlyFee, 0);
 
-  const contractCount = useCounter(CONTRACTS.length, 600);
-  const monthlyK = useCounter(Math.round(totalMonthly / 1000), 900);
+  // Landing-page hero stats — illustrative marketing figures, not live data.
+  const contractCount = useCounter(3, 600);
+  const monthlyK = useCounter(205, 900);
   const clauseCount = useCounter(18, 1100);
   const renewals = useCounter(2, 500);
 

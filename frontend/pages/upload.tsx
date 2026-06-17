@@ -2,9 +2,9 @@ import React, { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/router";
 import Head from "next/head";
-import { uploadToS3 } from "../lib/s3upload";
+import { uploadContract } from "../lib/api";
 
-type Stage = "idle" | "uploading" | "done";
+type Stage = "idle" | "uploading" | "done" | "error";
 
 const STEPS = ["Reading PDF", "Extracting clauses", "Scoring risks", "Finalizing"];
 
@@ -14,6 +14,7 @@ export default function Upload() {
   const [fileName, setFileName] = useState("");
   const [dragging, setDragging] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     if (stage !== "uploading") return;
@@ -27,14 +28,21 @@ export default function Upload() {
   const handleFile = useCallback(
     async (file: File) => {
       if (!file.name.toLowerCase().endsWith(".pdf")) {
-        alert("Only PDF files are accepted.");
+        setErrorMsg("Only PDF files are accepted.");
+        setStage("error");
         return;
       }
       setFileName(file.name);
+      setErrorMsg("");
       setStage("uploading");
-      await uploadToS3(file);
-      setStage("done");
-      setTimeout(() => router.push("/dashboard"), 1600);
+      try {
+        await uploadContract(file);
+        setStage("done");
+        setTimeout(() => router.push("/dashboard"), 1600);
+      } catch (err: any) {
+        setErrorMsg(err?.message || "Upload failed. Please try again.");
+        setStage("error");
+      }
     },
     [router]
   );
@@ -266,10 +274,39 @@ export default function Upload() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </motion.div>
-                  <p className="font-bold text-slate-900 text-lg mb-1">Contract processed</p>
+                  <p className="font-bold text-slate-900 text-lg mb-1">Contract uploaded</p>
                   <p className="text-sm text-slate-400">
-                    Redirecting to dashboard...
+                    AI analysis is running — redirecting to dashboard...
                   </p>
+                </motion.div>
+              )}
+
+              {/* ERROR */}
+              {stage === "error" && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 280, damping: 22 }}
+                  className="bg-white rounded-2xl border border-red-100 shadow-sm p-10 text-center"
+                >
+                  <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                    <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                    </svg>
+                  </div>
+                  <p className="font-bold text-slate-900 text-lg mb-1">Upload failed</p>
+                  <p className="text-sm text-slate-400 mb-6">{errorMsg}</p>
+                  <button
+                    onClick={() => {
+                      setErrorMsg("");
+                      setStage("idle");
+                    }}
+                    className="text-sm font-semibold text-white px-5 py-2.5 rounded-xl transition-all"
+                    style={{ background: "linear-gradient(135deg, #7C3AED, #6d28d9)" }}
+                  >
+                    Try again
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>

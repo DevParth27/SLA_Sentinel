@@ -26,7 +26,8 @@ import json
 import sys
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(".env.local")  # local dev secrets (gitignored)
+load_dotenv()              # fallback to .env; no-op in production
 
 # ── Check API key before doing anything ─────────────────────────────────────
 if not os.getenv("OPENAI_API_KEY"):

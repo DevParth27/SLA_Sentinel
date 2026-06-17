@@ -1,7 +1,17 @@
+// ── Live data layer ──────────────────────────────────────────────────────────
+// Talks to the Express backend (see /backend/api/routes). The backend returns
+// snake_case rows from Postgres; we map them to camelCase for the UI here.
+// Override the base URL with NEXT_PUBLIC_API_URL at build/deploy time.
+
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export interface Clause {
   type: string;
   summary: string;
 }
+
+export type ContractStatus = "active" | "expiring-soon" | "high-risk" | "expired";
 
 export interface Contract {
   id: string;
@@ -15,128 +25,175 @@ export interface Contract {
   monthlyFee: number;
   currency: string;
   riskScore: number;
-  uptime: string;
-  liabilityCap: string;
-  latePenalty: string;
-  status: "active" | "expiring-soon" | "high-risk" | "expired";
+  status: ContractStatus;
+  flagCount: number;
   flags: string[];
   clauses: Clause[];
 }
 
-export const CONTRACTS: Contract[] = [
-  {
-    id: "1",
-    name: "CloudSync SaaS Agreement",
-    vendor: "CloudSync Technologies Pvt. Ltd.",
-    client: "Meridian Retail Solutions Pvt. Ltd.",
-    effectiveDate: "2024-02-01",
-    expiryDate: "2025-01-31",
-    autoRenewal: true,
-    renewalNoticeDays: 30,
-    monthlyFee: 120000,
-    currency: "INR",
-    riskScore: 62,
-    uptime: "99.5%",
-    liabilityCap: "3 months fees",
-    latePenalty: "2% per month",
-    status: "expiring-soon",
-    flags: [
-      "Auto-renewal deadline in 18 days",
-      "Liability cap very low (₹3,60,000)",
-      "SLA credits capped at 30% max",
-    ],
-    clauses: [
-      { type: "Payment", summary: "₹1,20,000/month, 15-day grace period" },
-      { type: "SLA", summary: "99.5% uptime, P1 response in 30 mins" },
-      { type: "Auto-renewal", summary: "Renews Jan 31 2025, 30-day notice" },
-      { type: "Liability", summary: "Capped at 3 months of fees" },
-      { type: "Termination", summary: "60 days notice, no refund" },
-      { type: "Confidentiality", summary: "3 years post-termination" },
-    ],
-  },
-  {
-    id: "2",
-    name: "AWS Enterprise Support Agreement",
-    vendor: "Amazon Web Services India",
-    client: "Meridian Retail Solutions Pvt. Ltd.",
-    effectiveDate: "2023-06-01",
-    expiryDate: "2025-06-01",
-    autoRenewal: false,
-    renewalNoticeDays: 0,
-    monthlyFee: 85000,
-    currency: "INR",
-    riskScore: 81,
-    uptime: "99.99%",
-    liabilityCap: "12 months fees",
-    latePenalty: "1.5% per month",
-    status: "active",
-    flags: ["No auto-renewal — manual renewal required"],
-    clauses: [
-      { type: "Payment", summary: "₹85,000/month, net 30" },
-      { type: "SLA", summary: "99.99% uptime guaranteed" },
-      { type: "Auto-renewal", summary: "No auto-renewal clause" },
-      { type: "Liability", summary: "Capped at 12 months of fees" },
-      { type: "Termination", summary: "30 days notice" },
-      { type: "Confidentiality", summary: "5 years post-termination" },
-    ],
-  },
-  {
-    id: "3",
-    name: "Razorpay Payment Gateway MSA",
-    vendor: "Razorpay Software Pvt. Ltd.",
-    client: "Meridian Retail Solutions Pvt. Ltd.",
-    effectiveDate: "2024-01-01",
-    expiryDate: "2024-12-31",
-    autoRenewal: true,
-    renewalNoticeDays: 15,
-    monthlyFee: 0,
-    currency: "INR",
-    riskScore: 44,
-    uptime: "99.9%",
-    liabilityCap: "1 month fees",
-    latePenalty: "3% per month",
-    status: "high-risk",
-    flags: [
-      "Expires Dec 31 — only 16 days left",
-      "Auto-renewal notice only 15 days",
-      "Liability cap extremely low",
-      "High late penalty at 3%/month",
-    ],
-    clauses: [
-      { type: "Payment", summary: "Transaction fee based, no fixed monthly" },
-      { type: "SLA", summary: "99.9% uptime, 2hr P1 response" },
-      { type: "Auto-renewal", summary: "Renews Dec 31, only 15-day notice" },
-      { type: "Liability", summary: "Capped at 1 month equivalent" },
-      { type: "Termination", summary: "30 days notice" },
-      { type: "Confidentiality", summary: "2 years post-termination" },
-    ],
-  },
+export interface RiskSummary {
+  totalContracts: number;
+  highRisk: number;
+  expiringSoon: number;
+  avgRiskScore: number;
+  totalMonthlyExposure: number;
+  expiringNext30Days: number;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const KNOWN_STATUSES: ContractStatus[] = [
+  "active",
+  "expiring-soon",
+  "high-risk",
+  "expired",
 ];
 
-export const QUERY_ANSWERS: Record<string, string> = {
-  "What renews next quarter?":
-    "2 contracts renew next quarter. CloudSync SaaS Agreement renews Jan 31 2025 — action required by Jan 1 (30-day notice). Razorpay MSA expired Dec 31 2024 and is now overdue for renewal.",
-  "Which contracts have low liability caps?":
-    "Razorpay MSA has the lowest cap at 1 month equivalent. CloudSync is capped at ₹3,60,000 (3 months). AWS Enterprise is safest at 12 months of fees.",
-  "Show high risk contracts":
-    "1 high-risk contract: Razorpay Payment Gateway MSA — risk score 44/100. Issues: expired, 15-day auto-renewal notice, extremely low liability cap, 3% late penalty.",
-  "What are my payment obligations this month?":
-    "Total monthly obligations: ₹2,05,000. CloudSync: ₹1,20,000 due Feb 1. AWS Enterprise: ₹85,000 due monthly. Razorpay: transaction-based, no fixed fee.",
-};
-
-export function getContractById(id: string): Contract | undefined {
-  return CONTRACTS.find((c) => c.id === id);
+function normalizeStatus(
+  raw: unknown,
+  riskScore: number,
+  expiryDate: string
+): ContractStatus {
+  if (typeof raw === "string" && KNOWN_STATUSES.includes(raw as ContractStatus)) {
+    return raw as ContractStatus;
+  }
+  // Backend may emit 'pending'/'processing' before the AI pipeline finishes —
+  // derive a sensible UI status from the data we do have.
+  if (expiryDate) {
+    const days = (new Date(expiryDate).getTime() - Date.now()) / 86400000;
+    if (!Number.isNaN(days)) {
+      if (days < 0) return "expired";
+      if (days <= 60) return "expiring-soon";
+    }
+  }
+  if (riskScore > 0 && riskScore < 50) return "high-risk";
+  return "active";
 }
 
-export function getHighRiskContracts(): Contract[] {
-  return CONTRACTS.filter((c) => c.riskScore < 50);
+function toStr(v: unknown): string {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-export function getExpiringSoon(): Contract[] {
-  const now = new Date();
-  const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-  return CONTRACTS.filter((c) => {
-    const expiry = new Date(c.expiryDate);
-    return expiry <= in60Days && expiry >= now;
+function mapClause(c: any): Clause {
+  return { type: toStr(c?.type) || "General", summary: toStr(c?.summary) };
+}
+
+function mapFlag(f: any): string {
+  if (typeof f === "string") return f;
+  return toStr(f?.message ?? f?.description);
+}
+
+function mapContract(r: any): Contract {
+  const riskScore = Number(r?.risk_score ?? 0) || 0;
+  const expiryDate = toStr(r?.expiry_date);
+  return {
+    id: toStr(r?.id),
+    name: toStr(r?.name) || "Untitled contract",
+    vendor: toStr(r?.vendor),
+    client: toStr(r?.client),
+    effectiveDate: toStr(r?.effective_date),
+    expiryDate,
+    autoRenewal: Boolean(r?.auto_renewal),
+    renewalNoticeDays: Number(r?.renewal_notice_days ?? 0) || 0,
+    monthlyFee: Number(r?.monthly_fee ?? 0) || 0,
+    currency: toStr(r?.currency) || "INR",
+    riskScore,
+    status: normalizeStatus(r?.status, riskScore, expiryDate),
+    flagCount: Number(r?.flag_count ?? (Array.isArray(r?.flags) ? r.flags.length : 0)) || 0,
+    flags: Array.isArray(r?.flags) ? r.flags.map(mapFlag).filter(Boolean) : [],
+    clauses: Array.isArray(r?.clauses) ? r.clauses.map(mapClause) : [],
+  };
+}
+
+async function getJSON(path: string): Promise<any> {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  return res.json();
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────
+
+export async function fetchContracts(): Promise<Contract[]> {
+  const data = await getJSON("/api/contracts");
+  return Array.isArray(data) ? data.map(mapContract) : [];
+}
+
+export async function fetchContractById(id: string): Promise<Contract | null> {
+  const res = await fetch(`${API_BASE}/api/contracts/${encodeURIComponent(id)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  return mapContract(await res.json());
+}
+
+export async function fetchRiskSummary(): Promise<RiskSummary> {
+  const d = await getJSON("/api/risks/summary");
+  return {
+    totalContracts: Number(d?.total_contracts ?? 0) || 0,
+    highRisk: Number(d?.high_risk ?? 0) || 0,
+    expiringSoon: Number(d?.expiring_soon ?? 0) || 0,
+    avgRiskScore: Number(d?.avg_risk_score ?? 0) || 0,
+    totalMonthlyExposure: Number(d?.total_monthly_exposure ?? 0) || 0,
+    expiringNext30Days: Number(d?.expiring_next_30_days ?? 0) || 0,
+  };
+}
+
+export async function askQuery(question: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
   });
+  if (!res.ok) throw new Error(`Query failed (${res.status})`);
+  const data = await res.json();
+  return toStr(data?.answer ?? data?.response);
+}
+
+async function postJSON(path: string, body: unknown): Promise<any> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`;
+    try {
+      const e = await res.json();
+      detail = e?.error || e?.detail || detail;
+    } catch {
+      /* response had no JSON body */
+    }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+// Direct-to-S3 upload: the file is PUT straight to S3 via a presigned URL, so
+// it never passes through the serverless function (no request-body size cap).
+// 1) ask the backend for a presigned PUT URL, 2) upload the file to S3,
+// 3) register the contract so the backend can run the AI pipeline.
+export async function uploadContract(
+  file: File
+): Promise<{ contractId: string; status: string }> {
+  const { uploadUrl, s3Key } = await postJSON("/api/contracts/upload-url", {
+    filename: file.name,
+  });
+
+  const putRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "application/pdf" },
+    body: file,
+  });
+  if (!putRes.ok) {
+    throw new Error(`Could not upload file to storage (${putRes.status})`);
+  }
+
+  const data = await postJSON("/api/contracts/register", {
+    s3Key,
+    filename: file.name,
+  });
+  return { contractId: toStr(data?.contract_id), status: toStr(data?.status) };
+}
+
+export function isHighRisk(c: Contract): boolean {
+  return c.riskScore > 0 && c.riskScore < 50;
 }

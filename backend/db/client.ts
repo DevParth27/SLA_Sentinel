@@ -10,31 +10,35 @@ const signer = new Signer({
 
 let pool: Pool;
 
-async function createPool(): Promise<Pool> {
-  const token = await signer.getAuthToken();
+function createPool(): Pool {
   return new Pool({
     host: process.env.DATABASE_PGHOST,
     port: Number(process.env.DATABASE_PGPORT) || 5432,
     user: process.env.DATABASE_PGUSER,
     database: process.env.DATABASE_PGDATABASE,
-    password: token,
+    // Mint a fresh IAM auth token for every new physical connection. RDS IAM
+    // tokens expire after ~15 min, so a long-lived (warm serverless) pool must
+    // not reuse a single token captured at pool-creation time. pg calls this
+    // function each time it opens a new connection.
+    password: () => signer.getAuthToken(),
     ssl: { rejectUnauthorized: false },
-    max: 10,
+    // Keep this small: each warm serverless instance holds its own pool, so a
+    // large max across many instances can exhaust RDS connections.
+    max: 3,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
   });
 }
 
-async function getPool(): Promise<Pool> {
+function getPool(): Pool {
   if (!pool) {
-    pool = await createPool();
+    pool = createPool();
   }
   return pool;
 }
 
 export async function query(text: string, params?: any[]): Promise<any> {
-  const p = await getPool();
-  return p.query(text, params);
+  return getPool().query(text, params);
 }
 
 export async function testConnection(): Promise<void> {

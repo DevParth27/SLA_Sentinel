@@ -1,17 +1,15 @@
 """
 chain.py
-Connects prompts to the LLM using LangChain.
-Handles JSON parsing, retries on bad output, and error logging.
-This is the file that actually talks to OpenAI / Anthropic API.
+Connects prompts to the LLM using the OpenAI SDK directly.
+Handles JSON parsing and error logging.
+This is the file that actually talks to the OpenAI API.
 """
 
 import json
 import re
 import os
 from datetime import date
-from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
-from langchain.schema import HumanMessage
+from openai import OpenAI
 from dotenv import load_dotenv
 
 from .prompts import (
@@ -21,24 +19,42 @@ from .prompts import (
     COMPARISON_PROMPT,
 )
 
-load_dotenv()
+load_dotenv(".env.local")  # local dev secrets (gitignored)
+load_dotenv()              # fallback to .env; no-op in production
+
+MODEL = "gpt-4o-mini"
+
+# Reuse a single client across calls instead of rebuilding it each time.
+_client: OpenAI | None = None
 
 
-def get_llm(temperature: float = 0.0) -> ChatOpenAI:
+def get_client() -> OpenAI:
     """
-    Returns the LLM client.
+    Returns a cached OpenAI client.
+    Raises if the API key is missing so failures are obvious during dev.
+    """
+    global _client
+    if _client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        print(f"[chain] API key loaded: {'YES' if api_key else 'NO — CHECK .env'}")
+        if not api_key:
+            raise EnvironmentError("OPENAI_API_KEY not set in .env")
+        _client = OpenAI(api_key=api_key)
+    return _client
+
+
+def _complete(prompt: str, temperature: float = 0.0) -> str:
+    """
+    Sends a single user prompt to the chat model and returns the raw text.
     temperature=0 means deterministic output — important for JSON extraction.
-    Change model to "gpt-3.5-turbo" if you want faster/cheaper results for testing.
     """
-    api_key = os.getenv("OPENAI_API_KEY")
-    print(f"[chain] API key loaded: {'YES' if api_key else 'NO — CHECK .env'}")
-    if not api_key:
-        raise EnvironmentError("OPENAI_API_KEY not set in .env")
-    return ChatOpenAI(
-        model="gpt-4o-mini",
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
         temperature=temperature,
-        openai_api_key=api_key,
+        messages=[{"role": "user", "content": prompt}],
     )
+    return response.choices[0].message.content
 
 
 def parse_json_response(raw: str) -> dict | list:
@@ -60,13 +76,10 @@ def extract_clauses(contract_text: str) -> dict:
     Sends cleaned contract text to the LLM and returns structured clause data.
     This is the core extraction function — everything else builds on this.
     """
-    llm = get_llm()
-    prompt = PromptTemplate.from_template(CLAUSE_EXTRACTION_PROMPT)
-    formatted = prompt.format(contract_text=contract_text)
+    formatted = CLAUSE_EXTRACTION_PROMPT.format(contract_text=contract_text)
 
     print("[chain] Sending contract to LLM for extraction...")
-    response = llm.invoke([HumanMessage(content=formatted)])
-    raw = response.content
+    raw = _complete(formatted)
 
     print("[chain] Parsing LLM response...")
     return parse_json_response(raw)
@@ -77,16 +90,13 @@ def generate_risk_flags(contract_data: dict) -> list:
     Takes extracted clause data and asks the LLM to identify risk flags.
     Returns a list of risk objects with severity and description.
     """
-    llm = get_llm()
-    prompt = PromptTemplate.from_template(RISK_FLAG_PROMPT)
-    formatted = prompt.format(
+    formatted = RISK_FLAG_PROMPT.format(
         contract_data=json.dumps(contract_data, indent=2),
         today=date.today().isoformat(),
     )
 
     print("[chain] Generating risk flags...")
-    response = llm.invoke([HumanMessage(content=formatted)])
-    return parse_json_response(response.content)
+    return parse_json_response(_complete(formatted))
 
 
 def answer_query(question: str, contracts_data: list[dict]) -> str:
@@ -95,17 +105,15 @@ def answer_query(question: str, contracts_data: list[dict]) -> str:
     e.g. "What contracts are renewing next quarter?"
     Returns a plain text answer string.
     """
-    llm = get_llm(temperature=0.2)  # slight creativity for natural answers
-    prompt = PromptTemplate.from_template(WHAT_IF_PROMPT)
-    formatted = prompt.format(
+    formatted = WHAT_IF_PROMPT.format(
         question=question,
         contracts_data=json.dumps(contracts_data, indent=2),
         today=date.today().isoformat(),
     )
 
     print(f"[chain] Answering query: {question}")
-    response = llm.invoke([HumanMessage(content=formatted)])
-    return response.content.strip()
+    # slight creativity for natural answers
+    return _complete(formatted, temperature=0.2).strip()
 
 
 def compare_contracts(contracts_data: list[dict]) -> dict:
@@ -116,15 +124,12 @@ def compare_contracts(contracts_data: list[dict]) -> dict:
     if len(contracts_data) < 2:
         raise ValueError("Need at least 2 contracts to compare")
 
-    llm = get_llm()
-    prompt = PromptTemplate.from_template(COMPARISON_PROMPT)
-    formatted = prompt.format(
+    formatted = COMPARISON_PROMPT.format(
         contracts_data=json.dumps(contracts_data, indent=2)
     )
 
     print(f"[chain] Comparing {len(contracts_data)} contracts...")
-    response = llm.invoke([HumanMessage(content=formatted)])
-    return parse_json_response(response.content)
+    return parse_json_response(_complete(formatted))
 
 
 # ── Quick test ──────────────────────────────────────────────────────────────

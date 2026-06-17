@@ -12,7 +12,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(".env.local")  # local dev secrets (gitignored)
+load_dotenv()              # fallback to .env; no-op in production
 
 from api.routes import router
 
