@@ -5,9 +5,10 @@ const router = Router();
 
 const AI_URL = process.env.AI_PIPELINE_URL || "http://localhost:8000";
 
+// No fabricated data here — if the AI pipeline can't be reached we say so
+// plainly rather than inventing contract figures.
 const FALLBACK_ANSWER =
-  "AI pipeline is currently processing. Based on your contracts: CloudSync renews Jan 31 " +
-  "(30-day notice required), Razorpay is high risk (score 44/100), total monthly exposure is ₹2,05,000.";
+  "The AI assistant is temporarily unavailable. Please try your question again in a moment.";
 
 // POST /api/query
 router.post("/", async (req: Request, res: Response) => {
@@ -20,11 +21,53 @@ router.post("/", async (req: Request, res: Response) => {
     let answer = FALLBACK_ANSWER;
     let source = "fallback";
 
-    // Fetch contracts from DB to give the AI pipeline context
+    // Fetch contracts from DB to give the AI pipeline context. We enrich each
+    // row with its clauses, flags, and a derived days_to_expiry so GPT can
+    // reason about the whole portfolio ("which renewals are risky next quarter?")
+    // instead of just a single document.
     let contracts_data: any[] = [];
     try {
       const contractsResult = await query("SELECT * FROM contracts LIMIT 20");
-      contracts_data = contractsResult.rows;
+      const rows = contractsResult.rows;
+
+      let clausesByContract: Record<string, any[]> = {};
+      let flagsByContract: Record<string, any[]> = {};
+      if (rows.length > 0) {
+        const ids = rows.map((r: any) => r.id);
+        try {
+          const [clausesResult, flagsResult] = await Promise.all([
+            query("SELECT * FROM clauses WHERE contract_id = ANY($1)", [ids]),
+            query("SELECT * FROM flags WHERE contract_id = ANY($1)", [ids]),
+          ]);
+          for (const cl of clausesResult.rows) {
+            (clausesByContract[cl.contract_id] ||= []).push({
+              type: cl.type,
+              summary: cl.summary,
+            });
+          }
+          for (const fl of flagsResult.rows) {
+            (flagsByContract[fl.contract_id] ||= []).push(
+              fl.message || fl.severity
+            );
+          }
+        } catch (relErr: any) {
+          console.warn("[query] Could not fetch clauses/flags:", relErr.message);
+        }
+      }
+
+      const now = Date.now();
+      contracts_data = rows.map((r: any) => {
+        const expiry = r.expiry_date ? new Date(r.expiry_date).getTime() : NaN;
+        const days_to_expiry = Number.isNaN(expiry)
+          ? null
+          : Math.round((expiry - now) / 86400000);
+        return {
+          ...r,
+          days_to_expiry,
+          clauses: clausesByContract[r.id] || [],
+          flags: flagsByContract[r.id] || [],
+        };
+      });
     } catch (dbErr: any) {
       console.warn("[query] Could not fetch contracts for AI context:", dbErr.message);
     }

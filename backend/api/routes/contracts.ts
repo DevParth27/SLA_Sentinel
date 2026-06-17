@@ -30,58 +30,6 @@ function runInBackground(work: Promise<unknown>): void {
   }
 }
 
-// Fallback seed data if DB is down
-const SEED_CONTRACTS = [
-  {
-    id: "seed-1",
-    name: "CloudSync SaaS Agreement",
-    vendor: "CloudSync Technologies Pvt. Ltd.",
-    client: "Meridian Retail Solutions Pvt. Ltd.",
-    effective_date: "2024-02-01",
-    expiry_date: "2025-01-31",
-    auto_renewal: true,
-    renewal_notice_days: 30,
-    monthly_fee: 120000,
-    currency: "INR",
-    risk_score: 62,
-    status: "expiring-soon",
-    original_filename: "CloudSync_SaaS_Agreement.pdf",
-    flag_count: 2,
-  },
-  {
-    id: "seed-2",
-    name: "AWS Enterprise Support Agreement",
-    vendor: "Amazon Web Services India",
-    client: "Meridian Retail Solutions Pvt. Ltd.",
-    effective_date: "2023-06-01",
-    expiry_date: "2025-06-01",
-    auto_renewal: false,
-    renewal_notice_days: 0,
-    monthly_fee: 85000,
-    currency: "INR",
-    risk_score: 81,
-    status: "active",
-    original_filename: "AWS_Enterprise_Support.pdf",
-    flag_count: 0,
-  },
-  {
-    id: "seed-3",
-    name: "Razorpay Payment Gateway MSA",
-    vendor: "Razorpay Software Pvt. Ltd.",
-    client: "Meridian Retail Solutions Pvt. Ltd.",
-    effective_date: "2024-01-01",
-    expiry_date: "2024-12-31",
-    auto_renewal: true,
-    renewal_notice_days: 15,
-    monthly_fee: 0,
-    currency: "INR",
-    risk_score: 44,
-    status: "high-risk",
-    original_filename: "Razorpay_MSA.pdf",
-    flag_count: 3,
-  },
-];
-
 // GET /api/contracts
 router.get("/", async (req: Request, res: Response) => {
   try {
@@ -94,8 +42,10 @@ router.get("/", async (req: Request, res: Response) => {
     `);
     res.json(result.rows);
   } catch (err: any) {
-    console.warn("[contracts GET /] DB error, returning seed data:", err.message);
-    res.json(SEED_CONTRACTS);
+    // No fake fallback — surface the error so the dashboard only ever shows
+    // real data. An empty list renders the proper empty state.
+    console.error("[contracts GET /] DB error:", err.message);
+    res.status(503).json({ error: "Database unavailable", detail: err.message });
   }
 });
 
@@ -133,10 +83,8 @@ router.get("/:id", async (req: Request, res: Response) => {
       flags: flagsResult.rows,
     });
   } catch (err: any) {
-    console.warn("[contracts GET /:id] DB error:", err.message);
-    const seed = SEED_CONTRACTS.find((c) => c.id === req.params.id);
-    if (seed) return res.json({ ...seed, clauses: [], flags: [] });
-    res.status(404).json({ error: "Contract not found" });
+    console.error("[contracts GET /:id] DB error:", err.message);
+    res.status(503).json({ error: "Database unavailable", detail: err.message });
   }
 });
 

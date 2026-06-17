@@ -347,7 +347,7 @@ export default function ContractPage() {
               ))}
 
               <button
-                onClick={() => router.push("/dashboard")}
+                onClick={() => router.push(`/compare?a=${encodeURIComponent(contract.id)}`)}
                 className="w-full flex items-center justify-center gap-2 text-[13px] font-semibold text-white py-3 rounded-xl transition-colors mt-1"
                 style={{ background: "linear-gradient(135deg, #0F172A, #1e293b)" }}
               >

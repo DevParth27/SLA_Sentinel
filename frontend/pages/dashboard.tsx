@@ -37,7 +37,7 @@ const NAV = [
   },
   {
     label: "Compare",
-    href: "/dashboard",
+    href: "/compare",
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5L7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5" />
@@ -64,6 +64,35 @@ function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+// An actionable reminder: the date by which the team must decide. For
+// auto-renewing contracts this is the notice deadline (expiry minus the notice
+// period) — miss it and you're locked in another term. Otherwise it's expiry.
+interface Reminder {
+  id: string;
+  name: string;
+  vendor: string;
+  actBy: number; // epoch ms
+  daysLeft: number;
+  isAutoRenewal: boolean;
+  noticeDays: number;
+}
+
+function reminderFor(c: Contract): Reminder | null {
+  const expiry = new Date(c.expiryDate).getTime();
+  if (Number.isNaN(expiry)) return null;
+  const isAutoRenewal = c.autoRenewal && c.renewalNoticeDays > 0;
+  const actBy = isAutoRenewal ? expiry - c.renewalNoticeDays * 86400000 : expiry;
+  return {
+    id: c.id,
+    name: c.name,
+    vendor: c.vendor,
+    actBy,
+    daysLeft: Math.round((actBy - Date.now()) / 86400000),
+    isAutoRenewal,
+    noticeDays: c.renewalNoticeDays,
+  };
 }
 
 function SkeletonBlock({ className }: { className: string }) {
@@ -182,6 +211,11 @@ export default function Dashboard() {
   const sortedByExpiry = [...contracts].sort(
     (a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()
   );
+  // Actionable reminders: decisions due within the next 90 days (or overdue).
+  const reminders = contracts
+    .map(reminderFor)
+    .filter((r): r is Reminder => r !== null && r.daysLeft <= 90)
+    .sort((a, b) => a.daysLeft - b.daysLeft);
 
   const STATS = [
     {
@@ -446,6 +480,82 @@ export default function Dashboard() {
                   Upload a contract
                 </button>
               </div>
+            )}
+
+            {/* ── REMINDERS: action-required deadlines ── */}
+            {ready && reminders.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05 }}
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6"
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                      </svg>
+                    </span>
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
+                      Action Required
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {reminders.length} deadline{reminders.length !== 1 ? "s" : ""} within 90 days
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  {reminders.map((r) => {
+                    const overdue = r.daysLeft < 0;
+                    const urgent = r.daysLeft >= 0 && r.daysLeft <= 30;
+                    const tone = overdue
+                      ? { bar: "bg-red-500", chip: "bg-red-50 text-red-700 border-red-200", days: "text-red-600" }
+                      : urgent
+                      ? { bar: "bg-amber-400", chip: "bg-amber-50 text-amber-700 border-amber-200", days: "text-amber-600" }
+                      : { bar: "bg-slate-300", chip: "bg-slate-50 text-slate-600 border-slate-200", days: "text-slate-600" };
+
+                    const actByLabel = formatDate(new Date(r.actBy).toISOString());
+                    let message: string;
+                    if (r.isAutoRenewal) {
+                      message = overdue
+                        ? `Notice window passed — likely auto-renewed (${r.noticeDays}-day notice)`
+                        : `Give notice by ${actByLabel} or it auto-renews (${r.noticeDays}-day notice)`;
+                    } else {
+                      message = overdue
+                        ? `Expired ${actByLabel} — renew or archive`
+                        : `Expires ${actByLabel} — decide on renewal`;
+                    }
+
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => router.push(`/contract?id=${r.id}`)}
+                        className="flex items-center gap-3 px-3 py-3 rounded-xl border border-slate-100 hover:border-violet-200 hover:bg-slate-50 transition-colors cursor-pointer group"
+                      >
+                        <div className={`w-1.5 h-9 rounded-full flex-shrink-0 ${tone.bar}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-[13px] font-semibold text-slate-800 truncate group-hover:text-violet-700 transition-colors">
+                              {r.name}
+                            </p>
+                            {r.isAutoRenewal && (
+                              <span className="text-[9.5px] font-semibold text-violet-600 bg-violet-50 border border-violet-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                AUTO-RENEW
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11.5px] text-slate-400 truncate mt-0.5">{message}</p>
+                        </div>
+                        <span className={`text-[11px] font-bold tabular-nums px-2.5 py-1 rounded-lg border flex-shrink-0 ${tone.chip}`}>
+                          {overdue ? `${Math.abs(r.daysLeft)}d overdue` : `${r.daysLeft}d left`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
             )}
 
             {/* ── MIDDLE ROW: Portfolio Health + Renewal Timeline ── */}
