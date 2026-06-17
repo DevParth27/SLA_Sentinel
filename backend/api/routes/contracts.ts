@@ -8,7 +8,7 @@ const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 const s3 = new S3Client({
-  region: process.env.AWS_REGION || "us-east-1",
+  region: process.env.AWS_REGION || process.env.DATABASE_AWS_REGION || "us-east-1",
 });
 
 const BUCKET = process.env.S3_BUCKET_NAME || "sla-sentinel-contracts";

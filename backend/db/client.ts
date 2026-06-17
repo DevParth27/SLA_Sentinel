@@ -1,11 +1,22 @@
 import { Pool } from "pg";
 import { Signer } from "@aws-sdk/rds-signer";
+import { awsCredentialsProvider } from "@vercel/functions/oidc";
+
+const REGION =
+  process.env.DATABASE_AWS_REGION || process.env.AWS_REGION || "us-east-1";
+
+// Vercel's native AWS/RDS integration injects DATABASE_AWS_ROLE_ARN. When it's
+// present we assume that role via Vercel OIDC to mint the RDS IAM auth token —
+// this is the identity the database actually trusts. Locally (no role ARN) we
+// fall back to the default AWS credential chain (static keys in .env.local).
+const roleArn = process.env.DATABASE_AWS_ROLE_ARN;
 
 const signer = new Signer({
   hostname: process.env.DATABASE_PGHOST!,
   port: Number(process.env.DATABASE_PGPORT) || 5432,
   username: process.env.DATABASE_PGUSER!,
-  region: process.env.DATABASE_AWS_REGION || "us-east-1",
+  region: REGION,
+  ...(roleArn ? { credentials: awsCredentialsProvider({ roleArn }) } : {}),
 });
 
 let pool: Pool;
