@@ -14,9 +14,17 @@ import { errorHandler } from "./middleware/errorHandler";
 // function handler (see server.ts).
 const app = express();
 
+// Allow the origins listed in ALLOWED_ORIGINS (comma-separated). If the var is
+// unset, fall back to `true`, which reflects whatever Origin the request sends
+// (i.e. allow all) — note this must NOT be ["*"], because cors treats an array
+// as an exact-match allowlist and the literal "*" would match no real origin.
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+  : true;
+
 app.use(
   cors({
-    origin: process.env.ALLOWED_ORIGINS?.split(",") || ["*"],
+    origin: allowedOrigins,
     methods: ["GET", "POST", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
