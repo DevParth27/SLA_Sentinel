@@ -37,7 +37,10 @@ function createPool(): Pool {
     // large max across many instances can exhaust RDS connections.
     max: 3,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    // Establishing a connection includes minting the IAM token (OIDC → STS
+    // AssumeRoleWithWebIdentity → RDS signer) plus the relay handshake, which on
+    // a cold invocation can take several seconds — keep this generous.
+    connectionTimeoutMillis: 20000,
   });
 }
 

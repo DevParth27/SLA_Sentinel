@@ -42,31 +42,3 @@ CREATE TABLE IF NOT EXISTS queries (
   answer TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
-
--- Seed demo data so dashboard works immediately
-INSERT INTO contracts (name, vendor, client, effective_date,
-  expiry_date, auto_renewal, renewal_notice_days, monthly_fee,
-  risk_score, status, original_filename)
-VALUES
-(
-  'CloudSync SaaS Agreement',
-  'CloudSync Technologies Pvt. Ltd.',
-  'Meridian Retail Solutions Pvt. Ltd.',
-  '2024-02-01', '2025-01-31', true, 30, 120000, 62,
-  'expiring-soon', 'CloudSync_SaaS_Agreement.pdf'
-),
-(
-  'AWS Enterprise Support Agreement',
-  'Amazon Web Services India',
-  'Meridian Retail Solutions Pvt. Ltd.',
-  '2023-06-01', '2025-06-01', false, 0, 85000, 81,
-  'active', 'AWS_Enterprise_Support.pdf'
-),
-(
-  'Razorpay Payment Gateway MSA',
-  'Razorpay Software Pvt. Ltd.',
-  'Meridian Retail Solutions Pvt. Ltd.',
-  '2024-01-01', '2024-12-31', true, 15, 0, 44,
-  'high-risk', 'Razorpay_MSA.pdf'
-)
-ON CONFLICT DO NOTHING;
