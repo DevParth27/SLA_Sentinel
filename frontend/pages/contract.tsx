@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import { fetchContractById, Contract } from "../lib/api";
+import { useSettings, formatMoney, formatDate } from "../lib/settings";
 import RiskBadge from "../components/RiskBadge";
 import ClauseTable from "../components/ClauseTable";
 
@@ -77,6 +78,7 @@ function Nav({ onBack }: { onBack: () => void }) {
 
 export default function ContractPage() {
   const router = useRouter();
+  const settings = useSettings();
   const { id } = router.query;
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,17 +144,12 @@ export default function ContractPage() {
     );
   }
 
-  const fmtDate = (s: string) => {
-    const d = new Date(s);
-    return Number.isNaN(d.getTime())
-      ? "—"
-      : d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
-  };
+  const fmtDate = (s: string) => formatDate(s, settings.dateFormat);
 
   const METRICS = [
     {
       label: "Monthly Fee",
-      value: contract.monthlyFee > 0 ? `₹${contract.monthlyFee.toLocaleString("en-IN")}` : "Transaction-based",
+      value: contract.monthlyFee > 0 ? formatMoney(contract.monthlyFee, settings.currency) : "Transaction-based",
     },
     {
       label: "Auto-Renewal",

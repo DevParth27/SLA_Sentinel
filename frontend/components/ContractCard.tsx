@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Contract } from "../lib/api";
+import { useSettings, formatMoney, formatDate } from "../lib/settings";
 import RiskBadge from "./RiskBadge";
 
 interface ContractCardProps {
@@ -30,15 +31,10 @@ const PILL_LABEL: Record<Contract["status"], string> = {
 };
 
 export default function ContractCard({ contract, onClick }: ContractCardProps) {
+  const settings = useSettings();
   const fee =
-    contract.monthlyFee > 0
-      ? `₹${contract.monthlyFee.toLocaleString("en-IN")}`
-      : "Transaction";
-
-  const expiry = new Date(contract.expiryDate);
-  const expiryStr = Number.isNaN(expiry.getTime())
-    ? "—"
-    : expiry.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    contract.monthlyFee > 0 ? formatMoney(contract.monthlyFee, settings.currency) : "Transaction";
+  const expiryStr = formatDate(contract.expiryDate, settings.dateFormat);
 
   return (
     <motion.div

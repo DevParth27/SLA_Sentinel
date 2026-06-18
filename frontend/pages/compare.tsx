@@ -7,19 +7,9 @@ import {
   fetchContractById,
   Contract,
 } from "../lib/api";
+import { useSettings, formatMoney, formatDate } from "../lib/settings";
 import RiskBadge from "../components/RiskBadge";
 import ClauseTable from "../components/ClauseTable";
-
-function fmtDate(s: string): string {
-  const d = new Date(s);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function fmtFee(c: Contract): string {
-  return c.monthlyFee > 0 ? `₹${c.monthlyFee.toLocaleString("en-IN")}/mo` : "Transaction-based";
-}
 
 // One row of the side-by-side key-terms comparison. Highlights when the two
 // contracts disagree so renewals / vendor evaluations are easy to eyeball.
@@ -83,6 +73,10 @@ function Selector({
 
 export default function ComparePage() {
   const router = useRouter();
+  const settings = useSettings();
+  const fmtDate = (s: string) => formatDate(s, settings.dateFormat);
+  const fmtFee = (c: Contract) =>
+    c.monthlyFee > 0 ? `${formatMoney(c.monthlyFee, settings.currency)}/mo` : "Transaction-based";
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [idA, setIdA] = useState("");
