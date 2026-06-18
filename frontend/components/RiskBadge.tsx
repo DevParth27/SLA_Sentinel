@@ -9,33 +9,33 @@ interface RiskBadgeProps {
 function config(score: number) {
   if (score >= 80)
     return {
-      label: "Low Risk",
-      dot: "bg-emerald-400",
-      ring: "bg-emerald-400/20",
-      wrap: "bg-emerald-50 text-emerald-800 border-emerald-200/80",
+      label: "Low",
+      dot: "bg-ok",
+      ring: "bg-ok/25",
+      wrap: "bg-ok/10 text-ok border-ok/25",
       pulse: false,
     };
   if (score >= 50)
     return {
-      label: "Medium Risk",
-      dot: "bg-amber-400",
-      ring: "bg-amber-400/20",
-      wrap: "bg-amber-50 text-amber-800 border-amber-200/80",
+      label: "Medium",
+      dot: "bg-warn",
+      ring: "bg-warn/25",
+      wrap: "bg-warn/10 text-warn border-warn/25",
       pulse: false,
     };
   return {
-    label: "High Risk",
-    dot: "bg-red-500",
-    ring: "bg-red-400/25",
-    wrap: "bg-red-50 text-red-800 border-red-200/80",
+    label: "High",
+    dot: "bg-bad",
+    ring: "bg-bad/30",
+    wrap: "bg-bad/10 text-bad border-bad/30",
     pulse: true,
   };
 }
 
 const SIZE = {
-  sm: { outer: "gap-1.5 px-2.5 py-1", score: "text-xs font-bold", label: "text-xs", dot: "w-1.5 h-1.5", ring: "w-3 h-3" },
-  md: { outer: "gap-2 px-3 py-1.5", score: "text-sm font-bold", label: "text-sm", dot: "w-2 h-2", ring: "w-3.5 h-3.5" },
-  lg: { outer: "gap-2.5 px-4 py-2", score: "text-base font-bold", label: "text-sm", dot: "w-2.5 h-2.5", ring: "w-4 h-4" },
+  sm: { outer: "gap-1.5 px-2 py-0.5", score: "text-[11px] font-semibold", label: "text-[11px]", dot: "w-1.5 h-1.5", ring: "w-3 h-3" },
+  md: { outer: "gap-2 px-2.5 py-1", score: "text-[13px] font-semibold", label: "text-[12px]", dot: "w-2 h-2", ring: "w-3.5 h-3.5" },
+  lg: { outer: "gap-2.5 px-3 py-1.5", score: "text-[15px] font-semibold", label: "text-[13px]", dot: "w-2.5 h-2.5", ring: "w-4 h-4" },
 };
 
 export default function RiskBadge({ score, size = "md" }: RiskBadgeProps) {
@@ -43,7 +43,7 @@ export default function RiskBadge({ score, size = "md" }: RiskBadgeProps) {
   const s = SIZE[size];
 
   return (
-    <span className={`inline-flex items-center rounded-full border whitespace-nowrap ${c.wrap} ${s.outer}`}>
+    <span className={`inline-flex items-center rounded-md border whitespace-nowrap font-mono ${c.wrap} ${s.outer}`}>
       <span className={`relative flex items-center justify-center flex-shrink-0 ${s.ring}`}>
         <span className={`rounded-full ${c.dot} ${s.dot}`} />
         {c.pulse && (
@@ -55,7 +55,7 @@ export default function RiskBadge({ score, size = "md" }: RiskBadgeProps) {
         )}
       </span>
       <span className={`tabular-nums ${s.score}`}>{score}</span>
-      <span className="text-current opacity-30 font-light">|</span>
+      <span className="text-current opacity-25">·</span>
       <span className={`font-medium ${s.label}`}>{c.label}</span>
     </span>
   );

@@ -101,33 +101,31 @@ function SkeletonBlock({ className }: { className: string }) {
 
 function SkeletonStat() {
   return (
-    <div className="bg-white rounded-xl border border-slate-100 shadow-sm px-5 py-4 space-y-2">
-      <SkeletonBlock className="h-3 w-20 bg-slate-100" />
-      <SkeletonBlock className="h-7 w-16 bg-slate-100" />
-      <SkeletonBlock className="h-2.5 w-14 bg-slate-100" />
+    <div className="bg-surface rounded-xl border border-line px-4 py-4 space-y-2">
+      <SkeletonBlock className="h-7 w-7 rounded-lg" />
+      <SkeletonBlock className="h-6 w-16" />
+      <SkeletonBlock className="h-2.5 w-14" />
     </div>
   );
 }
 
 function SkeletonCard() {
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-3">
-      <SkeletonBlock className="h-[3px] w-full bg-slate-100 -mx-5 w-[calc(100%+40px)]" />
+    <div className="bg-surface rounded-xl border border-line p-5 space-y-3">
       <div className="flex justify-between">
         <div className="space-y-1.5 flex-1">
-          <SkeletonBlock className="h-3.5 w-3/5 bg-slate-100" />
-          <SkeletonBlock className="h-3 w-2/5 bg-slate-100" />
+          <SkeletonBlock className="h-3.5 w-3/5" />
+          <SkeletonBlock className="h-3 w-2/5" />
         </div>
-        <SkeletonBlock className="h-6 w-24 rounded-full bg-slate-100 ml-3" />
+        <SkeletonBlock className="h-5 w-20 rounded-md ml-3" />
       </div>
-      <div className="grid grid-cols-2 gap-3 py-3 border-y border-slate-50">
-        <SkeletonBlock className="h-10 bg-slate-100" />
-        <SkeletonBlock className="h-10 bg-slate-100" />
+      <div className="grid grid-cols-2 gap-3 py-3 border-y border-line-soft">
+        <SkeletonBlock className="h-9" />
+        <SkeletonBlock className="h-9" />
       </div>
-      <SkeletonBlock className="h-10 bg-amber-50" />
       <div className="flex justify-between">
-        <SkeletonBlock className="h-5 w-24 bg-slate-100" />
-        <SkeletonBlock className="h-4 w-16 rounded-full bg-slate-100" />
+        <SkeletonBlock className="h-5 w-24" />
+        <SkeletonBlock className="h-4 w-16" />
       </div>
     </div>
   );
@@ -140,21 +138,19 @@ function RenewalRow({ contract }: { contract: Contract }) {
   const isUrgent = valid && days >= 0 && days <= 30;
 
   return (
-    <div
-      className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer group"
-    >
-      <div className={`w-1.5 h-8 rounded-full flex-shrink-0 ${isOverdue ? "bg-red-500" : isUrgent ? "bg-amber-400" : "bg-emerald-400"}`} />
+    <div className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-raised transition-colors cursor-pointer group">
+      <div className={`w-1.5 h-8 rounded-full flex-shrink-0 ${isOverdue ? "bg-bad" : isUrgent ? "bg-warn" : "bg-ok"}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-slate-800 truncate group-hover:text-violet-700 transition-colors">
+        <p className="text-[13px] font-medium text-ink truncate group-hover:text-accent-bright transition-colors">
           {contract.name}
         </p>
-        <p className="text-[11px] text-slate-400 truncate">{contract.vendor || "—"}</p>
+        <p className="text-[11px] text-faint truncate">{contract.vendor || "—"}</p>
       </div>
       <div className="text-right flex-shrink-0">
-        <p className={`text-[12px] font-bold tabular-nums ${isOverdue ? "text-red-600" : isUrgent ? "text-amber-600" : "text-slate-600"}`}>
-          {!valid ? "—" : isOverdue ? `${Math.abs(days)}d overdue` : `${days}d left`}
+        <p className={`text-[12px] font-bold tabular-nums font-mono ${isOverdue ? "text-bad" : isUrgent ? "text-warn" : "text-sub"}`}>
+          {!valid ? "—" : isOverdue ? `${Math.abs(days)}d over` : `${days}d left`}
         </p>
-        <p className="text-[10px] text-slate-300 mt-0.5">{formatDate(contract.expiryDate)}</p>
+        <p className="text-[10px] text-dim mt-0.5 font-mono">{formatDate(contract.expiryDate)}</p>
       </div>
     </div>
   );
@@ -191,7 +187,6 @@ export default function Dashboard() {
   const ready = !loading && !error;
   const isEmpty = ready && contracts.length === 0;
 
-  // Prefer backend-computed summary; fall back to deriving from the contract list.
   const totalMonthly =
     summary?.totalMonthlyExposure ?? contracts.reduce((s, c) => s + c.monthlyFee, 0);
   const avgRisk =
@@ -211,78 +206,54 @@ export default function Dashboard() {
   const sortedByExpiry = [...contracts].sort(
     (a, b) => new Date(a.expiryDate).getTime() - new Date(b.expiryDate).getTime()
   );
-  // Actionable reminders: decisions due within the next 90 days (or overdue).
   const reminders = contracts
     .map(reminderFor)
     .filter((r): r is Reminder => r !== null && r.daysLeft <= 90)
     .sort((a, b) => a.daysLeft - b.daysLeft);
 
+  const iconCls = "w-4 h-4";
   const STATS = [
     {
       label: "Total Contracts",
       display: String(totalContracts),
       sub: "under management",
-      color: "text-slate-900",
-      icon: (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-        </svg>
-      ),
+      color: "text-ink",
+      icon: <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />,
     },
     {
       label: "Avg Risk Score",
       display: `${avgRisk}`,
       sub: avgRisk >= 70 ? "portfolio healthy" : avgRisk >= 50 ? "moderate exposure" : "needs attention",
-      color: avgRisk >= 70 ? "text-emerald-600" : avgRisk >= 50 ? "text-amber-600" : "text-red-600",
-      icon: (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-        </svg>
-      ),
+      color: avgRisk >= 70 ? "text-ok" : avgRisk >= 50 ? "text-warn" : "text-bad",
+      icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />,
     },
     {
       label: "Monthly Exposure",
       display: `₹${totalMonthly.toLocaleString("en-IN")}`,
       sub: "fixed obligations",
-      color: "text-slate-900",
-      icon: (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
+      color: "text-ink",
+      icon: <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
     },
     {
       label: "High Risk",
       display: String(summary?.highRisk ?? highRiskList.length),
       sub: "contracts flagged",
-      color: (summary?.highRisk ?? highRiskList.length) > 0 ? "text-red-600" : "text-slate-400",
-      icon: (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-        </svg>
-      ),
+      color: (summary?.highRisk ?? highRiskList.length) > 0 ? "text-bad" : "text-faint",
+      icon: <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />,
     },
     {
-      label: "Active Contracts",
+      label: "Active",
       display: String(activeCount),
       sub: "no immediate risk",
-      color: "text-emerald-600",
-      icon: (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
+      color: "text-ok",
+      icon: <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />,
     },
     {
       label: "Expiring (30d)",
       display: String(expiring30),
-      sub: "renewal deadline near",
-      color: expiring30 > 0 ? "text-amber-600" : "text-slate-400",
-      icon: (
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
+      sub: "deadline near",
+      color: expiring30 > 0 ? "text-warn" : "text-faint",
+      icon: <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />,
     },
   ];
 
@@ -290,29 +261,18 @@ export default function Dashboard() {
     <>
       <Head>
         <title>Dashboard — ContractIQ</title>
-        <style>{`
-          @keyframes shimmer-slide {
-            from { background-position: -200% 0; }
-            to   { background-position:  200% 0; }
-          }
-          .shimmer {
-            background: linear-gradient(90deg, #f8fafc 25%, #f1f5f9 50%, #f8fafc 75%);
-            background-size: 200% 100%;
-            animation: shimmer-slide 1.6s ease-in-out infinite;
-          }
-        `}</style>
       </Head>
 
-      <div className="min-h-screen bg-slate-50 flex" style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div className="min-h-screen bg-base text-ink font-sans flex">
         {/* ── SIDEBAR ── */}
-        <aside className="hidden md:flex flex-col w-56 bg-white border-r border-slate-100 fixed inset-y-0 left-0 z-20">
-          <div className="px-5 py-[18px] border-b border-slate-100 flex items-center gap-2.5">
-            <div className="w-6 h-6 bg-[#7C3AED] rounded-md flex items-center justify-center shadow-md shadow-violet-200/60">
+        <aside className="hidden md:flex flex-col w-56 bg-surface border-r border-line fixed inset-y-0 left-0 z-20">
+          <div className="px-5 py-[18px] border-b border-line flex items-center gap-2.5">
+            <div className="w-6 h-6 bg-accent-grad rounded-md flex items-center justify-center shadow-glow-sm">
               <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
               </svg>
             </div>
-            <span className="font-bold text-slate-900 text-[14px] tracking-tight">ContractIQ</span>
+            <span className="font-display font-bold text-ink text-[14px] tracking-tight">ContractIQ</span>
           </div>
 
           <nav className="flex-1 px-3 py-4 space-y-0.5">
@@ -323,35 +283,34 @@ export default function Dashboard() {
                   key={item.label}
                   onClick={() => router.push(item.href)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] font-medium text-left transition-all duration-150 ${
-                    active ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                    active ? "bg-accent/12 text-accent-bright" : "text-sub hover:bg-raised hover:text-ink"
                   }`}
                 >
-                  <span className={active ? "text-violet-600" : "text-slate-400"}>{item.icon}</span>
+                  <span className={active ? "text-accent" : "text-faint"}>{item.icon}</span>
                   {item.label}
-                  {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-500" />}
+                  {active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-accent" />}
                 </button>
               );
             })}
           </nav>
 
-          {/* Sidebar insight */}
           {highRiskList.length > 0 && (
-            <div className="mx-3 mb-3 p-3 rounded-xl bg-violet-50 border border-violet-100">
-              <p className="text-[10.5px] font-semibold text-violet-700 mb-1">Portfolio Alert</p>
-              <p className="text-[11px] text-violet-600 leading-relaxed">
+            <div className="mx-3 mb-3 p-3 rounded-xl bg-bad/8 border border-bad/20">
+              <p className="text-[10.5px] font-semibold text-bad mb-1 font-mono uppercase tracking-wider">Portfolio Alert</p>
+              <p className="text-[11px] text-bad/80 leading-relaxed">
                 {highRiskList.length} high-risk contract{highRiskList.length !== 1 ? "s" : ""} need immediate review.
               </p>
               <button
                 onClick={() => router.push(`/contract?id=${highRiskList[0]?.id}`)}
-                className="text-[10.5px] font-semibold text-violet-700 mt-1.5 hover:underline"
+                className="text-[10.5px] font-semibold text-bad mt-1.5 hover:underline"
               >
                 Review now →
               </button>
             </div>
           )}
 
-          <div className="px-4 py-4 border-t border-slate-100">
-            <p className="text-[11px] text-slate-400">ContractIQ · v1.0</p>
+          <div className="px-4 py-4 border-t border-line">
+            <p className="text-[11px] text-dim font-mono">ContractIQ · v1.0</p>
           </div>
         </aside>
 
@@ -362,22 +321,22 @@ export default function Dashboard() {
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-red-600 px-6 py-2.5 flex items-center gap-3"
+              className="bg-bad/15 border-b border-bad/30 px-6 py-2.5 flex items-center gap-3"
             >
               <motion.span
-                className="w-2 h-2 rounded-full bg-white flex-shrink-0"
+                className="w-2 h-2 rounded-full bg-bad flex-shrink-0"
                 animate={{ opacity: [1, 0.3, 1] }}
                 transition={{ duration: 1.5, repeat: Infinity }}
               />
-              <p className="text-[12.5px] text-white font-medium flex-1">
-                <span className="font-bold">{highRiskList.length} contract{highRiskList.length !== 1 ? "s" : ""} at high risk</span>
+              <p className="text-[12.5px] text-ink font-medium flex-1">
+                <span className="font-bold text-bad">{highRiskList.length} contract{highRiskList.length !== 1 ? "s" : ""} at high risk</span>
                 {" — "}
                 {highRiskList.map((c) => c.name).join(", ")}.
                 {" "}Immediate review recommended.
               </p>
               <button
                 onClick={() => router.push(`/contract?id=${highRiskList[0]?.id}`)}
-                className="flex-shrink-0 text-[11.5px] font-semibold text-white bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors"
+                className="flex-shrink-0 text-[11.5px] font-semibold text-bad bg-bad/15 hover:bg-bad/25 px-3 py-1.5 rounded-lg transition-colors"
               >
                 Review →
               </button>
@@ -385,27 +344,26 @@ export default function Dashboard() {
           )}
 
           {/* Topbar */}
-          <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+          <header className="bg-base/80 backdrop-blur-md border-b border-line px-6 py-4 flex items-center justify-between sticky top-0 z-10">
             <div>
-              <h1 className="text-[13.5px] font-semibold text-slate-800">Contract Dashboard</h1>
-              <p className="text-[11.5px] text-slate-400 mt-0.5">
+              <h1 className="text-[14px] font-display font-semibold text-ink">Contract Dashboard</h1>
+              <p className="text-[11.5px] text-faint mt-0.5 font-mono">
                 {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-2 text-[12px] text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
-                <span className={`w-1.5 h-1.5 rounded-full ${error ? "bg-red-400" : "bg-emerald-400"}`} />
+              <div className="hidden sm:flex items-center gap-2 text-[12px] text-sub bg-surface border border-line px-3 py-1.5 rounded-lg font-mono">
+                <span className={`w-1.5 h-1.5 rounded-full ${error ? "bg-bad" : "bg-ok"}`} />
                 {error ? "Backend unreachable" : "All systems operational"}
               </div>
               <button
                 onClick={() => router.push("/upload")}
-                className="flex items-center gap-1.5 text-[13px] font-semibold text-white px-4 py-2 rounded-xl transition-all"
-                style={{ background: "linear-gradient(135deg, #7C3AED, #6d28d9)", boxShadow: "0 2px 10px rgba(124,58,237,0.25)" }}
+                className="flex items-center gap-1.5 text-[13px] font-semibold text-base bg-accent hover:bg-accent-bright px-4 py-2 rounded-lg transition-colors shadow-glow-sm"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                 </svg>
-                Upload Contract
+                Upload
               </button>
             </div>
           </header>
@@ -413,18 +371,17 @@ export default function Dashboard() {
           <div className="flex-1 p-6 max-w-7xl w-full space-y-6">
             {/* ── ERROR STATE ── */}
             {error && (
-              <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-10 text-center">
-                <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <div className="bg-surface rounded-2xl border border-bad/20 p-10 text-center">
+                <div className="w-14 h-14 bg-bad/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-bad" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                   </svg>
                 </div>
-                <p className="text-[15px] font-bold text-slate-900 mb-1">Couldn’t load your contracts</p>
-                <p className="text-[12.5px] text-slate-400 mb-6">{error}</p>
+                <p className="text-[15px] font-display font-bold text-ink mb-1">Couldn’t load your contracts</p>
+                <p className="text-[12.5px] text-faint mb-6">{error}</p>
                 <button
                   onClick={load}
-                  className="text-[13px] font-semibold text-white px-5 py-2.5 rounded-xl transition-all"
-                  style={{ background: "linear-gradient(135deg, #7C3AED, #6d28d9)" }}
+                  className="text-[13px] font-semibold text-base bg-accent hover:bg-accent-bright px-5 py-2.5 rounded-lg transition-colors"
                 >
                   Try again
                 </button>
@@ -447,15 +404,17 @@ export default function Dashboard() {
                           initial={{ opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: i * 0.05, duration: 0.35 }}
-                          className="bg-white rounded-xl border border-slate-100 shadow-sm px-4 py-4"
+                          className="bg-surface rounded-xl border border-line hover:border-line/80 px-4 py-4 transition-colors group"
                         >
-                          <div className={`w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center text-slate-400 mb-3`}>
-                            {s.icon}
+                          <div className="w-7 h-7 rounded-lg bg-raised flex items-center justify-center text-faint group-hover:text-accent transition-colors mb-3">
+                            <svg className={iconCls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                              {s.icon}
+                            </svg>
                           </div>
-                          <p className={`text-[22px] font-bold tabular-nums leading-none mb-1 ${s.color}`}>
+                          <p className={`font-display text-[22px] font-bold tabular-nums leading-none mb-1 ${s.color}`}>
                             {s.display}
                           </p>
-                          <p className="text-[10px] text-slate-400 leading-tight">{s.sub}</p>
+                          <p className="text-[10px] text-faint leading-tight">{s.sub}</p>
                         </motion.div>
                       ))}
                 </AnimatePresence>
@@ -464,44 +423,43 @@ export default function Dashboard() {
 
             {/* ── EMPTY STATE ── */}
             {isEmpty && (
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center">
-                <div className="w-16 h-16 bg-violet-50 rounded-2xl flex items-center justify-center mx-auto mb-5">
-                  <svg className="w-7 h-7 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <div className="bg-surface rounded-2xl border border-line p-12 text-center">
+                <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                  <svg className="w-7 h-7 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 13.5l3 3m0 0l3-3m-3 3v-6m1.06-4.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
                   </svg>
                 </div>
-                <p className="text-lg font-bold text-slate-900 mb-1.5">No contracts yet</p>
-                <p className="text-sm text-slate-400 mb-6">Upload your first contract to start tracking risk and renewals.</p>
+                <p className="text-lg font-display font-bold text-ink mb-1.5">No contracts yet</p>
+                <p className="text-sm text-faint mb-6">Upload your first contract to start tracking risk and renewals.</p>
                 <button
                   onClick={() => router.push("/upload")}
-                  className="text-[13px] font-semibold text-white px-5 py-2.5 rounded-xl transition-all"
-                  style={{ background: "linear-gradient(135deg, #7C3AED, #6d28d9)" }}
+                  className="text-[13px] font-semibold text-base bg-accent hover:bg-accent-bright px-5 py-2.5 rounded-lg transition-colors"
                 >
                   Upload a contract
                 </button>
               </div>
             )}
 
-            {/* ── REMINDERS: action-required deadlines ── */}
+            {/* ── REMINDERS ── */}
             {ready && reminders.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.05 }}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6"
+                className="bg-surface rounded-2xl border border-line p-6"
               >
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-md bg-amber-500 flex items-center justify-center flex-shrink-0">
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                    <span className="w-5 h-5 rounded-md bg-warn/15 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-3 h-3 text-warn" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
                       </svg>
                     </span>
-                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
+                    <p className="text-[11px] font-semibold text-sub uppercase tracking-[0.15em] font-mono">
                       Action Required
                     </p>
                   </div>
-                  <span className="text-[11px] text-slate-400">
+                  <span className="text-[11px] text-faint font-mono">
                     {reminders.length} deadline{reminders.length !== 1 ? "s" : ""} within 90 days
                   </span>
                 </div>
@@ -511,10 +469,10 @@ export default function Dashboard() {
                     const overdue = r.daysLeft < 0;
                     const urgent = r.daysLeft >= 0 && r.daysLeft <= 30;
                     const tone = overdue
-                      ? { bar: "bg-red-500", chip: "bg-red-50 text-red-700 border-red-200", days: "text-red-600" }
+                      ? { bar: "bg-bad", chip: "bg-bad/10 text-bad border-bad/25" }
                       : urgent
-                      ? { bar: "bg-amber-400", chip: "bg-amber-50 text-amber-700 border-amber-200", days: "text-amber-600" }
-                      : { bar: "bg-slate-300", chip: "bg-slate-50 text-slate-600 border-slate-200", days: "text-slate-600" };
+                      ? { bar: "bg-warn", chip: "bg-warn/10 text-warn border-warn/25" }
+                      : { bar: "bg-faint", chip: "bg-white/5 text-sub border-line" };
 
                     const actByLabel = formatDate(new Date(r.actBy).toISOString());
                     let message: string;
@@ -532,24 +490,24 @@ export default function Dashboard() {
                       <div
                         key={r.id}
                         onClick={() => router.push(`/contract?id=${r.id}`)}
-                        className="flex items-center gap-3 px-3 py-3 rounded-xl border border-slate-100 hover:border-violet-200 hover:bg-slate-50 transition-colors cursor-pointer group"
+                        className="flex items-center gap-3 px-3 py-3 rounded-lg border border-line hover:border-accent/40 hover:bg-raised transition-colors cursor-pointer group"
                       >
                         <div className={`w-1.5 h-9 rounded-full flex-shrink-0 ${tone.bar}`} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="text-[13px] font-semibold text-slate-800 truncate group-hover:text-violet-700 transition-colors">
+                            <p className="text-[13px] font-semibold text-ink truncate group-hover:text-accent-bright transition-colors">
                               {r.name}
                             </p>
                             {r.isAutoRenewal && (
-                              <span className="text-[9.5px] font-semibold text-violet-600 bg-violet-50 border border-violet-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                              <span className="text-[9px] font-semibold text-accent bg-accent/10 border border-accent/25 px-1.5 py-0.5 rounded-full flex-shrink-0 font-mono tracking-wide">
                                 AUTO-RENEW
                               </span>
                             )}
                           </div>
-                          <p className="text-[11.5px] text-slate-400 truncate mt-0.5">{message}</p>
+                          <p className="text-[11.5px] text-faint truncate mt-0.5">{message}</p>
                         </div>
-                        <span className={`text-[11px] font-bold tabular-nums px-2.5 py-1 rounded-lg border flex-shrink-0 ${tone.chip}`}>
-                          {overdue ? `${Math.abs(r.daysLeft)}d overdue` : `${r.daysLeft}d left`}
+                        <span className={`text-[11px] font-bold tabular-nums px-2.5 py-1 rounded-md border flex-shrink-0 font-mono ${tone.chip}`}>
+                          {overdue ? `${Math.abs(r.daysLeft)}d over` : `${r.daysLeft}d left`}
                         </span>
                       </div>
                     );
@@ -566,26 +524,25 @@ export default function Dashboard() {
                 transition={{ delay: 0.1 }}
                 className="grid grid-cols-1 lg:grid-cols-5 gap-5"
               >
-                {/* Portfolio Health - 3 cols */}
-                <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                {/* Portfolio Health */}
+                <div className="lg:col-span-3 bg-surface rounded-2xl border border-line p-6">
                   <div className="flex items-center justify-between mb-5">
                     <div>
-                      <p className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-widest mb-0.5">
+                      <p className="text-[10.5px] font-medium text-faint uppercase tracking-[0.15em] mb-0.5 font-mono">
                         Portfolio Health
                       </p>
-                      <p className="text-[13px] font-semibold text-slate-800">Risk score by contract</p>
+                      <p className="text-[13px] font-display font-semibold text-ink">Risk score by contract</p>
                     </div>
-                    <div className="flex items-center gap-3 text-[11px] text-slate-400">
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />Low</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" />Medium</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500" />High</span>
+                    <div className="flex items-center gap-3 text-[11px] text-faint">
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-ok" />Low</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-warn" />Med</span>
+                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-bad" />High</span>
                     </div>
                   </div>
 
                   <div className="space-y-5">
                     {contracts.map((c, i) => {
-                      const barColor = c.riskScore >= 80 ? "bg-emerald-500" : c.riskScore >= 50 ? "bg-amber-400" : "bg-red-500";
-                      const trackColor = c.riskScore >= 80 ? "bg-emerald-50" : c.riskScore >= 50 ? "bg-amber-50" : "bg-red-50";
+                      const barColor = c.riskScore >= 80 ? "bg-ok" : c.riskScore >= 50 ? "bg-warn" : "bg-bad";
                       return (
                         <div
                           key={c.id}
@@ -593,12 +550,12 @@ export default function Dashboard() {
                           className="cursor-pointer group"
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <p className="text-[13px] font-medium text-slate-700 group-hover:text-violet-700 transition-colors truncate flex-1 pr-4">
+                            <p className="text-[13px] font-medium text-sub group-hover:text-accent-bright transition-colors truncate flex-1 pr-4">
                               {c.name}
                             </p>
                             <RiskBadge score={c.riskScore} size="sm" />
                           </div>
-                          <div className={`w-full h-2.5 ${trackColor} rounded-full overflow-hidden`}>
+                          <div className="w-full h-2 bg-raised rounded-full overflow-hidden">
                             <motion.div
                               className={`h-full rounded-full ${barColor}`}
                               initial={{ width: 0 }}
@@ -612,22 +569,22 @@ export default function Dashboard() {
                   </div>
 
                   {/* Exposure breakdown */}
-                  <div className="mt-6 pt-5 border-t border-slate-100">
-                    <p className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-widest mb-3">
+                  <div className="mt-6 pt-5 border-t border-line">
+                    <p className="text-[10.5px] font-medium text-faint uppercase tracking-[0.15em] mb-3 font-mono">
                       Monthly Exposure Breakdown
                     </p>
                     <div className="space-y-2">
                       {contracts.filter((c) => c.monthlyFee > 0).map((c) => (
                         <div key={c.id} className="flex items-center justify-between">
-                          <p className="text-[12px] text-slate-600 truncate flex-1">{c.vendor || c.name}</p>
-                          <p className="text-[12px] font-semibold text-slate-800 tabular-nums">
+                          <p className="text-[12px] text-sub truncate flex-1">{c.vendor || c.name}</p>
+                          <p className="text-[12px] font-semibold text-ink tabular-nums font-mono">
                             ₹{c.monthlyFee.toLocaleString("en-IN")}/mo
                           </p>
                         </div>
                       ))}
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 mt-2">
-                        <p className="text-[12px] font-semibold text-slate-700">Total fixed</p>
-                        <p className="text-[13px] font-bold text-slate-900 tabular-nums">
+                      <div className="flex items-center justify-between pt-2 border-t border-line mt-2">
+                        <p className="text-[12px] font-semibold text-sub">Total fixed</p>
+                        <p className="text-[13px] font-bold text-accent-bright tabular-nums font-mono">
                           ₹{totalMonthly.toLocaleString("en-IN")}/mo
                         </p>
                       </div>
@@ -635,13 +592,13 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Renewal Timeline - 2 cols */}
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col">
+                {/* Renewal Timeline */}
+                <div className="lg:col-span-2 bg-surface rounded-2xl border border-line p-6 flex flex-col">
                   <div className="mb-5">
-                    <p className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-widest mb-0.5">
+                    <p className="text-[10.5px] font-medium text-faint uppercase tracking-[0.15em] mb-0.5 font-mono">
                       Renewal Timeline
                     </p>
-                    <p className="text-[13px] font-semibold text-slate-800">Contract expiry status</p>
+                    <p className="text-[13px] font-display font-semibold text-ink">Contract expiry status</p>
                   </div>
 
                   <div className="flex-1 space-y-1">
@@ -652,24 +609,22 @@ export default function Dashboard() {
                     ))}
                   </div>
 
-                  {/* Summary */}
-                  <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-3 text-center">
+                  <div className="mt-5 pt-4 border-t border-line grid grid-cols-3 text-center">
                     {[
-                      { label: "Overdue", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d < 0; }).length, color: "text-red-600" },
-                      { label: "Due soon", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d >= 0 && d <= 90; }).length, color: "text-amber-600" },
-                      { label: "Safe", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d > 90; }).length, color: "text-emerald-600" },
+                      { label: "Overdue", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d < 0; }).length, color: "text-bad" },
+                      { label: "Due soon", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d >= 0 && d <= 90; }).length, color: "text-warn" },
+                      { label: "Safe", value: contracts.filter(c => { const d = daysFromNow(c.expiryDate); return !Number.isNaN(d) && d > 90; }).length, color: "text-ok" },
                     ].map((s) => (
                       <div key={s.label}>
-                        <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
-                        <p className="text-[10.5px] text-slate-400 mt-0.5">{s.label}</p>
+                        <p className={`font-display text-xl font-bold ${s.color}`}>{s.value}</p>
+                        <p className="text-[10.5px] text-faint mt-0.5">{s.label}</p>
                       </div>
                     ))}
                   </div>
 
-                  {/* Auto-renewal notice */}
-                  <div className="mt-4 bg-amber-50 border border-amber-100 rounded-xl p-3">
-                    <p className="text-[11.5px] font-semibold text-amber-800 mb-1">Auto-renewal watch</p>
-                    <p className="text-[11px] text-amber-700 leading-relaxed">
+                  <div className="mt-4 bg-warn/8 border border-warn/20 rounded-xl p-3">
+                    <p className="text-[11.5px] font-semibold text-warn mb-1">Auto-renewal watch</p>
+                    <p className="text-[11px] text-warn/80 leading-relaxed">
                       {contracts.filter(c => c.autoRenewal).length} of {contracts.length} contracts have auto-renewal clauses.
                       Review notice deadlines to avoid unwanted renewals.
                     </p>
@@ -684,18 +639,18 @@ export default function Dashboard() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.2 }}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6"
+                className="bg-surface rounded-2xl border border-line p-6"
               >
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-5 h-5 rounded-md bg-violet-600 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <div className="w-5 h-5 rounded-md bg-accent/15 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3 h-3 text-accent" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
                     </svg>
                   </div>
-                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">
+                  <p className="text-[11px] font-semibold text-sub uppercase tracking-[0.15em] font-mono">
                     Ask your contracts
                   </p>
-                  <span className="ml-auto text-[11px] text-slate-400 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto text-[11px] text-faint bg-raised border border-line px-2 py-0.5 rounded-md font-mono">
                     AI · GPT
                   </span>
                 </div>
@@ -707,12 +662,12 @@ export default function Dashboard() {
             {!error && !isEmpty && (
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-[13.5px] font-semibold text-slate-800">All Contracts</h2>
+                  <h2 className="text-[14px] font-display font-semibold text-ink">All Contracts</h2>
                   <div className="flex items-center gap-3">
-                    {!loading && <span className="text-[11.5px] text-slate-400">{contracts.length} contracts</span>}
+                    {!loading && <span className="text-[11.5px] text-faint font-mono">{contracts.length} contracts</span>}
                     <button
                       onClick={() => router.push("/upload")}
-                      className="text-[11.5px] font-semibold text-violet-600 hover:text-violet-700 transition-colors"
+                      className="text-[11.5px] font-semibold text-accent hover:text-accent-bright transition-colors"
                     >
                       + Add new
                     </button>
@@ -746,9 +701,9 @@ export default function Dashboard() {
             )}
 
             {/* ── FOOTER ── */}
-            <div className="border-t border-slate-100 pt-5 pb-2 flex items-center justify-between text-[11.5px] text-slate-300">
+            <div className="border-t border-line pt-5 pb-2 flex items-center justify-between text-[11.5px] text-dim font-mono">
               <span>ContractIQ</span>
-              <span>Last updated {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
+              <span>Updated {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
           </div>
         </main>

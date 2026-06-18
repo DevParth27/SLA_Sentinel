@@ -7,12 +7,12 @@ interface ClauseTableProps {
 }
 
 const TYPE_DOT: Record<string, string> = {
-  Payment: "bg-blue-400",
-  SLA: "bg-violet-400",
-  "Auto-renewal": "bg-amber-400",
-  Liability: "bg-red-400",
-  Termination: "bg-slate-400",
-  Confidentiality: "bg-emerald-400",
+  Payment: "bg-info",
+  SLA: "bg-accent",
+  "Auto-renewal": "bg-warn",
+  Liability: "bg-bad",
+  Termination: "bg-faint",
+  Confidentiality: "bg-ok",
 };
 
 // The AI pipeline stores some clause values as JSON (arrays of strings, arrays
@@ -47,23 +47,24 @@ function FormattedValue({ value }: { value: string }) {
 
   if (Array.isArray(parsed)) {
     return (
-      <ul className="list-disc pl-4 space-y-1.5">
+      <ul className="space-y-1.5">
         {parsed.map((item, i) => (
-          <li key={i}>
-            {item && typeof item === "object" ? (
-              <span className="space-x-1">
-                {Object.entries(item).map(([k, v]) => (
-                  <span key={k}>
-                    <span className="font-medium text-slate-700">
-                      {prettifyKey(k)}:
-                    </span>{" "}
-                    {String(v)}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              String(item)
-            )}
+          <li key={i} className="flex gap-2">
+            <span className="mt-1.5 flex-shrink-0 w-1 h-1 rounded-full bg-accent/60" />
+            <span>
+              {item && typeof item === "object" ? (
+                <span className="space-x-1.5">
+                  {Object.entries(item).map(([k, v]) => (
+                    <span key={k}>
+                      <span className="font-medium text-sub">{prettifyKey(k)}:</span>{" "}
+                      {String(v)}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                String(item)
+              )}
+            </span>
           </li>
         ))}
       </ul>
@@ -74,7 +75,7 @@ function FormattedValue({ value }: { value: string }) {
     <div className="space-y-1">
       {Object.entries(parsed).map(([k, v]) => (
         <div key={k}>
-          <span className="font-medium text-slate-700">{prettifyKey(k)}:</span>{" "}
+          <span className="font-medium text-sub">{prettifyKey(k)}:</span>{" "}
           {String(v)}
         </div>
       ))}
@@ -84,18 +85,18 @@ function FormattedValue({ value }: { value: string }) {
 
 export default function ClauseTable({ clauses, compareWith }: ClauseTableProps) {
   return (
-    <div className="rounded-xl overflow-hidden border border-slate-100">
+    <div className="rounded-xl overflow-hidden border border-line">
       <table className="w-full text-sm border-collapse">
         <thead>
-          <tr className="bg-slate-50 border-b border-slate-100">
-            <th className="text-left px-4 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-widest w-[30%]">
+          <tr className="bg-raised border-b border-line">
+            <th className="text-left px-4 py-3 text-[10px] font-medium text-faint uppercase tracking-[0.15em] w-[30%] font-mono">
               Type
             </th>
-            <th className="text-left px-4 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+            <th className="text-left px-4 py-3 text-[10px] font-medium text-faint uppercase tracking-[0.15em] font-mono">
               Summary
             </th>
             {compareWith && (
-              <th className="text-left px-4 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-widest">
+              <th className="text-left px-4 py-3 text-[10px] font-medium text-faint uppercase tracking-[0.15em] font-mono">
                 vs. Other
               </th>
             )}
@@ -113,46 +114,42 @@ export default function ClauseTable({ clauses, compareWith }: ClauseTableProps) 
             return (
               <tr
                 key={i}
-                className={`border-b border-slate-50 last:border-0 transition-colors ${
-                  isDiff
-                    ? "bg-amber-50/70"
-                    : isEven
-                    ? "bg-white"
-                    : "bg-slate-50/40"
+                className={`border-b border-line-soft last:border-0 transition-colors ${
+                  isDiff ? "bg-warn/8" : isEven ? "bg-surface" : "bg-raised/40"
                 }`}
               >
-                <td className="px-4 py-3.5">
+                <td className="px-4 py-3.5 align-top">
                   <div className="flex items-center gap-2">
                     <span
                       className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                        TYPE_DOT[clause.type] ?? "bg-slate-300"
+                        TYPE_DOT[clause.type] ?? "bg-dim"
                       }`}
                     />
-                    <span className="font-semibold text-slate-800 text-xs">
+                    <span className="font-medium text-ink text-xs">
                       {prettifyKey(clause.type)}
                     </span>
                   </div>
                 </td>
-                <td className="px-4 py-3.5 text-slate-500 text-xs leading-relaxed">
+                <td className="px-4 py-3.5 text-sub text-xs leading-relaxed align-top">
                   <FormattedValue value={clause.summary} />
                 </td>
                 {compareWith && (
-                  <td className="px-4 py-3.5 text-xs">
+                  <td className="px-4 py-3.5 text-xs align-top">
                     {other ? (
                       isDiff ? (
-                        <span className="text-amber-700 font-medium">
+                        <span className="text-warn">
                           <FormattedValue value={other.summary} />
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-emerald-600 text-[10px] font-semibold uppercase tracking-wide">
+                        <span className="inline-flex items-center gap-1 text-ok text-[10px] font-semibold uppercase tracking-wide font-mono">
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"/>
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                           </svg>
                           Identical
                         </span>
                       )
                     ) : (
-                      <span className="text-slate-300 text-[10px] italic">Not found</span>
+                      <span className="text-dim text-[10px] italic">Not found</span>
                     )}
                   </td>
                 )}
