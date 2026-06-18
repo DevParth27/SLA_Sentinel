@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import ThemeToggle from "../components/ThemeToggle";
 
 function useCounter(target: number, duration = 1000) {
   const [val, setVal] = useState(0);
@@ -203,13 +204,14 @@ export default function Index() {
               <Logo className="w-7 h-7" />
               <span className="font-display font-bold text-ink tracking-tight text-[16px]">ContractIQ</span>
             </div>
-            <div className="flex items-center gap-2 sm:gap-6">
+            <div className="flex items-center gap-2 sm:gap-4">
               <button onClick={() => router.push("/upload")} className="hidden sm:block text-[13.5px] text-sub hover:text-ink transition-colors">
                 Upload
               </button>
               <button onClick={() => router.push("/dashboard")} className="hidden sm:block text-[13.5px] text-sub hover:text-ink transition-colors">
                 Dashboard
               </button>
+              <ThemeToggle />
               <button
                 onClick={() => router.push("/dashboard")}
                 className="text-[13px] font-semibold text-base bg-accent hover:bg-accent-bright px-4 py-2 rounded-lg transition-colors shadow-glow-sm"
@@ -227,18 +229,7 @@ export default function Index() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
               >
-                <div className="inline-flex items-center gap-2 mb-7 px-3 py-1.5 rounded-full border border-line bg-surface/80 backdrop-blur">
-                  <motion.span
-                    className="w-1.5 h-1.5 rounded-full bg-ok"
-                    animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
-                    transition={{ duration: 2, repeat: Infinity }}
-                  />
-                  <span className="text-[11px] font-medium text-sub font-mono tracking-tight">
-                    AI-POWERED · LIVE ANALYSIS
-                  </span>
-                </div>
-
-                <h1 className="font-display text-[50px] md:text-[62px] font-bold text-ink leading-[1.02] tracking-[-0.03em] mb-5">
+                <h1 className="font-display text-[50px] md:text-[62px] font-bold text-ink leading-[1.02] tracking-[-0.03em] mb-5 mt-2">
                   Contract risk,
                   <br />
                   <span className="bg-clip-text text-transparent bg-accent-grad">

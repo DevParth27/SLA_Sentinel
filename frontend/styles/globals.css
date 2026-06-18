@@ -2,8 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Theme tokens (R G B channels so Tailwind /opacity works) ── */
+/* Default = dark. Adding .light on <html> switches to the light palette. */
 :root {
   color-scheme: dark;
+  --c-base: 8 9 12;
+  --c-surface: 16 19 25;
+  --c-raised: 22 26 33;
+  --c-elevated: 28 33 42;
+  --c-line: 35 40 47;
+  --c-line-soft: 26 30 37;
+  --c-ink: 243 245 248;
+  --c-sub: 162 169 180;
+  --c-faint: 100 107 119;
+  --c-dim: 69 75 85;
+  --c-accent: 91 141 239;
+  --c-accent-bright: 125 168 255;
+  --c-accent-dim: 61 107 196;
+  --c-ok: 61 220 151;
+  --c-warn: 245 181 68;
+  --c-bad: 255 107 107;
+  --c-info: 91 141 239;
+  --grid-line: 255 255 255;
+  --grid-alpha: 0.025;
+}
+
+html.light {
+  color-scheme: light;
+  --c-base: 245 246 249;
+  --c-surface: 255 255 255;
+  --c-raised: 240 242 246;
+  --c-elevated: 232 235 240;
+  --c-line: 223 227 233;
+  --c-line-soft: 236 238 242;
+  --c-ink: 14 17 24;
+  --c-sub: 71 78 89;
+  --c-faint: 122 129 140;
+  --c-dim: 168 174 183;
+  --c-accent: 73 118 211;
+  --c-accent-bright: 43 90 188;
+  --c-accent-dim: 43 90 188;
+  --c-ok: 13 152 102;
+  --c-warn: 183 114 6;
+  --c-bad: 209 41 41;
+  --c-info: 43 90 188;
+  --grid-line: 15 23 42;
+  --grid-alpha: 0.045;
 }
 
 * {
@@ -12,14 +56,15 @@
 
 html {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #08090c;
+  background: rgb(var(--c-base));
 }
 
 body {
-  background: #08090c;
-  color: #f3f5f8;
+  background: rgb(var(--c-base));
+  color: rgb(var(--c-ink));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 /* Headings & numerics get the geometric grotesk */
@@ -31,36 +76,36 @@ body {
 /* Selection */
 ::selection {
   background: rgba(91, 141, 239, 0.3);
-  color: #fff;
+  color: rgb(var(--c-ink));
 }
 
-/* Custom scrollbar — thin, dark, technical */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #08090c;
+  background: rgb(var(--c-base));
 }
 ::-webkit-scrollbar-thumb {
-  background: #23282f;
+  background: rgb(var(--c-line));
   border-radius: 6px;
-  border: 2px solid #08090c;
+  border: 2px solid rgb(var(--c-base));
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #323844;
+  background: rgb(var(--c-elevated));
 }
 
-/* Reusable engineered-grid background (faint) */
+/* Reusable engineered-grid background */
 .bg-grid {
   background-image:
-    linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    linear-gradient(to right, rgb(var(--grid-line) / var(--grid-alpha)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--grid-line) / var(--grid-alpha)) 1px, transparent 1px);
   background-size: 56px 56px;
 }
 
 .bg-dots {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgb(var(--grid-line) / var(--grid-alpha)) 1px, transparent 1px);
   background-size: 28px 28px;
 }
 
@@ -70,7 +115,7 @@ body {
   to   { background-position: 200% 0; }
 }
 .shimmer {
-  background: linear-gradient(90deg, #101319 25%, #1a1f27 50%, #101319 75%);
+  background: linear-gradient(90deg, rgb(var(--c-raised)) 25%, rgb(var(--c-elevated)) 50%, rgb(var(--c-raised)) 75%);
   background-size: 200% 100%;
   animation: shimmer-slide 1.6s ease-in-out infinite;
 }

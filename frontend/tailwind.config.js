@@ -1,4 +1,8 @@
 /** @type {import('tailwindcss').Config} */
+function withAlpha(varName) {
+  return `rgb(var(${varName}) / <alpha-value>)`;
+}
+
 module.exports = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx}",
@@ -8,27 +12,27 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Surfaces — near-black charcoal stack
-        base: "#08090C",
-        surface: "#101319",
-        raised: "#161A21",
-        elevated: "#1C212A",
-        line: "#23282F",
-        "line-soft": "#1A1E25",
+        // Surfaces — swap between dark/light via CSS variables (see globals.css)
+        base: withAlpha("--c-base"),
+        surface: withAlpha("--c-surface"),
+        raised: withAlpha("--c-raised"),
+        elevated: withAlpha("--c-elevated"),
+        line: withAlpha("--c-line"),
+        "line-soft": withAlpha("--c-line-soft"),
         // Text
-        ink: "#F3F5F8",
-        sub: "#A2A9B4",
-        faint: "#646B77",
-        dim: "#454B55",
-        // Accent — electric blue
-        accent: "#5B8DEF",
-        "accent-bright": "#7DA8FF",
-        "accent-dim": "#3D6BC4",
+        ink: withAlpha("--c-ink"),
+        sub: withAlpha("--c-sub"),
+        faint: withAlpha("--c-faint"),
+        dim: withAlpha("--c-dim"),
+        // Accent
+        accent: withAlpha("--c-accent"),
+        "accent-bright": withAlpha("--c-accent-bright"),
+        "accent-dim": withAlpha("--c-accent-dim"),
         // Semantic
-        ok: "#3DDC97",
-        warn: "#F5B544",
-        bad: "#FF6B6B",
-        info: "#5B8DEF",
+        ok: withAlpha("--c-ok"),
+        warn: withAlpha("--c-warn"),
+        bad: withAlpha("--c-bad"),
+        info: withAlpha("--c-info"),
       },
       fontFamily: {
         display: ['"Space Grotesk"', "system-ui", "sans-serif"],
